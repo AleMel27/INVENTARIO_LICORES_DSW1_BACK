@@ -1,0 +1,6 @@
+@GESTION_INVENTARIO_LICORES_HostAddress = http://localhost:5139
+
+GET {{GESTION_INVENTARIO_LICORES_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###

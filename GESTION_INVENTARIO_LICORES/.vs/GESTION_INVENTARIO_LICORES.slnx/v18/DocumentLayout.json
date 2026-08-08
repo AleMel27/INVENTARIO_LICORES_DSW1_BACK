@@ -1,0 +1,54 @@
+{
+  "Version": 1,
+  "WorkspaceRootPath": "C:\\Users\\HP SUPPORT\\Desktop\\Andre\\1Cibertec\\Desarrollo de Servicios Web 1\\Proyecto\\back\\GESTION_INVENTARIO_LICORES\\",
+  "Documents": [
+    {
+      "AbsoluteMoniker": "D:0:0:{23C56841-214A-447A-84B4-525B5F69DEFA}|GESTION_INVENTARIO_LICORES\\GESTION_INVENTARIO_LICORES.csproj|c:\\users\\hp support\\desktop\\andre\\1cibertec\\desarrollo de servicios web 1\\proyecto\\back\\gestion_inventario_licores\\gestion_inventario_licores\\properties\\launchsettings.json||{90A6B3A7-C1A3-4009-A288-E2FF89E96FA0}",
+      "RelativeMoniker": "D:0:0:{23C56841-214A-447A-84B4-525B5F69DEFA}|GESTION_INVENTARIO_LICORES\\GESTION_INVENTARIO_LICORES.csproj|solutionrelative:gestion_inventario_licores\\properties\\launchsettings.json||{90A6B3A7-C1A3-4009-A288-E2FF89E96FA0}"
+    },
+    {
+      "AbsoluteMoniker": "D:0:0:{23C56841-214A-447A-84B4-525B5F69DEFA}|GESTION_INVENTARIO_LICORES\\GESTION_INVENTARIO_LICORES.csproj|c:\\users\\hp support\\desktop\\andre\\1cibertec\\desarrollo de servicios web 1\\proyecto\\back\\gestion_inventario_licores\\gestion_inventario_licores\\appsettings.json||{90A6B3A7-C1A3-4009-A288-E2FF89E96FA0}",
+      "RelativeMoniker": "D:0:0:{23C56841-214A-447A-84B4-525B5F69DEFA}|GESTION_INVENTARIO_LICORES\\GESTION_INVENTARIO_LICORES.csproj|solutionrelative:gestion_inventario_licores\\appsettings.json||{90A6B3A7-C1A3-4009-A288-E2FF89E96FA0}"
+    }
+  ],
+  "DocumentGroupContainers": [
+    {
+      "Orientation": 0,
+      "VerticalTabListWidth": 256,
+      "DocumentGroups": [
+        {
+          "DockedWidth": 200,
+          "SelectedChildIndex": 0,
+          "Children": [
+            {
+              "$type": "Document",
+              "DocumentIndex": 0,
+              "Title": "launchSettings.json",
+              "DocumentMoniker": "C:\\Users\\HP SUPPORT\\Desktop\\Andre\\1Cibertec\\Desarrollo de Servicios Web 1\\Proyecto\\back\\GESTION_INVENTARIO_LICORES\\GESTION_INVENTARIO_LICORES\\Properties\\launchSettings.json",
+              "RelativeDocumentMoniker": "GESTION_INVENTARIO_LICORES\\Properties\\launchSettings.json",
+              "ToolTip": "C:\\Users\\HP SUPPORT\\Desktop\\Andre\\1Cibertec\\Desarrollo de Servicios Web 1\\Proyecto\\back\\GESTION_INVENTARIO_LICORES\\GESTION_INVENTARIO_LICORES\\Properties\\launchSettings.json",
+              "RelativeToolTip": "GESTION_INVENTARIO_LICORES\\Properties\\launchSettings.json",
+              "ViewState": "AgIAAAAAAAAAAAAAAAAAAA0AAAAgAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.001642|",
+              "WhenOpened": "2026-08-08T16:41:05.33Z",
+              "EditorCaption": ""
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 1,
+              "Title": "appsettings.json",
+              "DocumentMoniker": "C:\\Users\\HP SUPPORT\\Desktop\\Andre\\1Cibertec\\Desarrollo de Servicios Web 1\\Proyecto\\back\\GESTION_INVENTARIO_LICORES\\GESTION_INVENTARIO_LICORES\\appsettings.json",
+              "RelativeDocumentMoniker": "GESTION_INVENTARIO_LICORES\\appsettings.json",
+              "ToolTip": "C:\\Users\\HP SUPPORT\\Desktop\\Andre\\1Cibertec\\Desarrollo de Servicios Web 1\\Proyecto\\back\\GESTION_INVENTARIO_LICORES\\GESTION_INVENTARIO_LICORES\\appsettings.json",
+              "RelativeToolTip": "GESTION_INVENTARIO_LICORES\\appsettings.json",
+              "ViewState": "AgIAAAAAAAAAAAAAAAAAAAYAAAAEAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.001642|",
+              "WhenOpened": "2026-08-08T16:39:40.868Z",
+              "EditorCaption": ""
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
