@@ -12,6 +12,9 @@ builder.Services.AddSwaggerGen();
 // ----------------------------------------------
 builder.Services.AddScoped<ICategoriaService, CategoriaService>();
 builder.Services.AddScoped<IMarcaService, MarcaService>();
+builder.Services.AddScoped<IProductoService, ProductoService>();
+builder.Services.AddScoped<IProveedorService, ProveedorService>();
+builder.Services.AddScoped<IAlmacenService, AlmacenService>();
 
 var app = builder.Build();
 

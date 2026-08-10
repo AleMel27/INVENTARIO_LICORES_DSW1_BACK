@@ -9,6 +9,5 @@ namespace GESTION_INVENTARIO_LICORES.Interfaces
         bool insert(Compra compra);
         bool update(Compra compra);
         bool delete(long idCompra);
-
     }
 }
