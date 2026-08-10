@@ -2,8 +2,6 @@
 {
     public class DetalleCompra
     {
-
-
         public long IdDetalleCompra { get; set; }
         public long IdCompra { get; set; }
         public long IdProducto { get; set; }
@@ -14,7 +12,5 @@
         // Propiedades opcionales de navegación
         public Compra? Compra { get; set; }
         public Producto? Producto { get; set; }
-
-
     }
 }

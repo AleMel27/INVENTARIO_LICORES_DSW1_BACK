@@ -1,0 +1,142 @@
+# ==============================
+
+# Visual Studio
+
+# ==============================
+
+.vs/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+
+# ==============================
+
+# Compilación
+
+# ==============================
+
+[Bb]in/
+[Oo]bj/
+[Dd]ebug/
+[Rr]elease/
+x64/
+x86/
+[Aa]rm/
+[Aa]rm64/
+
+# Archivos generados por compilación
+
+*.dll
+*.exe
+*.pdb
+*.obj
+*.cache
+*.ilk
+*.log
+
+# ==============================
+
+# Visual Studio Code
+
+# ==============================
+
+.vscode/
+
+# ==============================
+
+# NuGet
+
+# ==============================
+
+*.nupkg
+*.snupkg
+packages/
+.nuget/
+
+# ==============================
+
+# ASP.NET / .NET
+
+# ==============================
+
+project.lock.json
+project.fragment.lock.json
+artifacts/
+
+# ==============================
+
+# Archivos temporales
+
+# ==============================
+
+*.tmp
+*.temp
+*.bak
+*.swp
+*.swo
+*~
+
+# ==============================
+
+# Sistema operativo
+
+# ==============================
+
+# Windows
+
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# macOS
+
+.DS_Store
+
+# ==============================
+
+# Logs
+
+# ==============================
+
+*.log
+
+# ==============================
+
+# Cobertura de código
+
+# ==============================
+
+coverage/
+TestResults/
+
+# ==============================
+
+# ReSharper
+
+# ==============================
+
+_ReSharper*/
+*.[Rr]e[Ss]harper*
+*.DotSettings.user
+
+# ==============================
+
+# Rider
+
+# ==============================
+
+.idea/
+
+# ==============================
+
+# Base de datos local
+
+# ==============================
+
+*.mdf
+*.ldf
+*.ndf
+*.db
+*.sqlite
+*.sqlite3

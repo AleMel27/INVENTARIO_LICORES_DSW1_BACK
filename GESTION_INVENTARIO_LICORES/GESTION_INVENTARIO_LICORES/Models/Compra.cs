@@ -2,8 +2,6 @@
 {
     public class Compra
     {
-
-
         public long IdCompra { get; set; }
         public long IdProveedor { get; set; }
         public long IdUsuario { get; set; }
@@ -20,8 +18,5 @@
         public Proveedor? Proveedor { get; set; }
         public Usuario? Usuario { get; set; }
         public List<DetalleCompra>? DetalleCompras { get; set; }
-
-
-
     }
 }

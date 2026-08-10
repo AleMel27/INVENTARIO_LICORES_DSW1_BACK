@@ -2,7 +2,6 @@
 {
     public class Inventario
     {
-
         public long IdInventario { get; set; }
         public long IdProducto { get; set; }
         public long IdAlmacen { get; set; }
@@ -12,6 +11,5 @@
         // Propiedades opcionales de navegación (para incluir datos del Producto o Almacén en las consultas)
         public Producto? Producto { get; set; }
         public Almacen? Almacen { get; set; }
-
     }
 }

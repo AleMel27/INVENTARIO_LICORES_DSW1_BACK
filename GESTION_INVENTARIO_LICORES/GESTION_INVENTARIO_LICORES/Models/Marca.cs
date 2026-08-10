@@ -8,6 +8,5 @@
         public bool Estado { get; set; } = true;
         public DateTime FechaCreacion { get; set; } = DateTime.Now;
         public DateTime FechaActualizacion { get; set; } = DateTime.Now;
-
     }
 }

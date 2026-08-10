@@ -2,7 +2,6 @@
 {
     public class Proveedor
     {
-
         public long IdProveedor { get; set; }
         public string Ruc { get; set; } = string.Empty;
         public string RazonSocial { get; set; } = string.Empty;
@@ -12,7 +11,5 @@
         public bool Estado { get; set; } = true;
         public DateTime FechaCreacion { get; set; } = DateTime.Now;
         public DateTime FechaActualizacion { get; set; } = DateTime.Now;
-
-
     }
 }

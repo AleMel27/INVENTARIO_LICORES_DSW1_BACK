@@ -2,7 +2,6 @@
 {
     public class MovimientoInventario
     {
-
         public long IdMovimiento { get; set; }
         public long IdProducto { get; set; }
         public long IdAlmacen { get; set; }
@@ -21,6 +20,5 @@
         public Almacen? Almacen { get; set; }
         public Usuario? Usuario { get; set; }
         public Compra? Compra { get; set; }
-
     }
 }

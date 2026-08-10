@@ -2,8 +2,6 @@
 {
     public class Producto
     {
-
-
         public long IdProducto { get; set; }
         public long IdCategoria { get; set; }
         public long IdMarca { get; set; }
@@ -21,7 +19,5 @@
         // Propiedades opcionales de navegación (por si las utilizas para los JOINs)
         public Categoria? Categoria { get; set; }
         public Marca? Marca { get; set; }
-
-
     }
 }
