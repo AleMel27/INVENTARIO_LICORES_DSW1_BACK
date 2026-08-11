@@ -1,4 +1,5 @@
 ﻿using Microsoft.AspNetCore.Mvc;
+using Microsoft.Data.SqlClient;
 using GESTION_INVENTARIO_LICORES.Interfaces;
 using GESTION_INVENTARIO_LICORES.Models;
 
@@ -18,68 +19,79 @@ namespace GESTION_INVENTARIO_LICORES.Controllers
         [HttpGet]
         public async Task<IActionResult> Get()
         {
-            var lista = _service.list();
+            var lista = _service.List();
             if (lista.Count > 0)
             {
                 return Ok(new Response<List<Categoria>>
                 {
                     Success = true,
-                    Message = "Categorías obtenidas correctamente.",
+                    Message = "Categorías obtenidas con éxito.",
                     Data = lista
                 });
             }
             return BadRequest(new Response<object>
             {
                 Success = false,
-                Message = "No se encontraron categorías."
+                Message = "No se encontraron categorías registradas."
             });
         }
 
-        [HttpGet("{id}")]
-        public async Task<IActionResult> GetById(long id)
+        [HttpGet("{idCategoria}")]
+        public async Task<IActionResult> GetById(long idCategoria)
         {
-            var cat = _service.getCategoria(id);
-            if (cat == null)
+            var categoria = _service.GetCategoria(idCategoria);
+            if (categoria == null)
             {
                 return NotFound(new Response<object>
                 {
                     Success = false,
-                    Message = "La categoría no existe."
+                    Message = "La categoría solicitada no existe."
                 });
             }
             return Ok(new Response<Categoria>
             {
                 Success = true,
                 Message = "Categoría encontrada.",
-                Data = cat
+                Data = categoria
             });
         }
 
         [HttpPost]
-        public async Task<IActionResult> Post(Categoria categoria)
+        public async Task<IActionResult> Post([FromBody] Categoria categoria)
         {
-            var resp = _service.insert(categoria);
-            if (resp)
+            try
             {
-                return Created("", new Response<Categoria>
+                var resp = _service.Insert(categoria);
+                if (resp)
                 {
-                    Success = true,
-                    Message = "Categoría registrada con éxito.",
-                    Data = categoria
+                    return Created("", new Response<Categoria>
+                    {
+                        Success = true,
+                        Message = "Categoría registrada correctamente.",
+                        Data = categoria
+                    });
+                }
+                return BadRequest(new Response<object>
+                {
+                    Success = false,
+                    Message = "Hubo un error al registrar la categoría."
                 });
             }
-            return BadRequest(new Response<object>
+            catch (SqlException ex)
             {
-                Success = false,
-                Message = "Error al registrar la categoría."
-            });
+                return BadRequest(new Response<object>
+                {
+                    Success = false,
+                    Message = ex.Message
+                });
+            }
         }
 
         [HttpPut]
         public async Task<IActionResult> Put([FromBody] Categoria categoria)
         {
-            var existente = _service.getCategoria(categoria.IdCategoria);
-            if (existente == null)
+            var existe = _service.GetCategoria(categoria.IdCategoria);
+            if (existe == null)
             {
                 return NotFound(new Response<object>
                 {
@@ -88,51 +100,74 @@ namespace GESTION_INVENTARIO_LICORES.Controllers
                 });
             }
 
-            var resp = _service.update(categoria);
-            if (resp)
+            try
             {
-                return Ok(new Response<Categoria>
+                var resp = _service.Update(categoria);
+                if (resp)
                 {
-                    Success = true,
-                    Message = "Categoría actualizada correctamente.",
-                    Data = categoria
+                    return Ok(new Response<Categoria>
+                    {
+                        Success = true,
+                        Message = "Se actualizó la categoría correctamente.",
+                        Data = categoria
+                    });
+                }
+                return BadRequest(new Response<object>
+                {
+                    Success = false,
+                    Message = "Hubo un error al actualizar la categoría."
                 });
             }
-            return BadRequest(new Response<object>
+            catch (SqlException ex)
             {
-                Success = false,
-                Message = "Error al actualizar la categoría."
-            });
+                return BadRequest(new Response<object>
+                {
+                    Success = false,
+                    Message = ex.Message
+                });
+            }
         }
 
-        [HttpDelete("{id}")]
-        public async Task<IActionResult> Delete(long id)
+        [HttpDelete("{idCategoria}")]
+        public async Task<IActionResult> Delete(long idCategoria)
         {
-            var existente = _service.getCategoria(id);
-            if (existente == null)
+            var categoria = _service.GetCategoria(idCategoria);
+            if (categoria == null)
             {
                 return NotFound(new Response<object>
                 {
                     Success = false,
-                    Message = "No se encontró la categoría para eliminar."
+                    Message = "No se encontró la categoría para dar de baja."
                 });
             }
 
-            var resp = _service.delete(id);
-            if (resp)
+            try
             {
-                return Ok(new Response<Categoria>
+                var resp = _service.Delete(idCategoria);
+                if (resp)
                 {
-                    Success = true,
-                    Message = "Categoría eliminada con éxito.",
-                    Data = existente
+                    categoria.Estado = false;
+                    return Ok(new Response<Categoria>
+                    {
+                        Success = true,
+                        Message = "Se dio de baja la categoría correctamente.",
+                        Data = categoria
+                    });
+                }
+                return BadRequest(new Response<object>
+                {
+                    Success = false,
+                    Message = "Hubo un error al dar de baja la categoría."
                 });
             }
-            return BadRequest(new Response<object>
+            catch (SqlException ex)
             {
-                Success = false,
-                Message = "Error al eliminar la categoría."
-            });
+                return BadRequest(new Response<object>
+                {
+                    Success = false,
+                    Message = ex.Message
+                });
+            }
         }
     }
 }

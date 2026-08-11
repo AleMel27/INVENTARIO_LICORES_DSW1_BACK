@@ -4,10 +4,10 @@ namespace GESTION_INVENTARIO_LICORES.Interfaces
 {
     public interface IProductoService
     {
-        List<Producto> list();
-        Producto getProducto(long idProducto);
-        bool insert(Producto producto);
-        bool update(Producto producto);
-        bool delete(long idProducto);
+        List<Producto> List();
+        Producto GetProducto(long idProducto);
+        bool Insert(Producto producto);
+        bool Update(Producto producto);
+        bool Delete(long idProducto);
     }
 }

@@ -1,5 +1,5 @@
-﻿using System.Data;
-using Microsoft.Data.SqlClient;
+﻿using Microsoft.Data.SqlClient;
+using System.Data;
 using GESTION_INVENTARIO_LICORES.Interfaces;
 using GESTION_INVENTARIO_LICORES.Models;
 
@@ -7,133 +7,170 @@ namespace GESTION_INVENTARIO_LICORES.Services
 {
     public class AlmacenService : IAlmacenService
     {
-        private readonly IConfiguration _configuration;
+        private readonly string? _conexion;
 
         public AlmacenService(IConfiguration configuration)
         {
-            _configuration = configuration;
+            _conexion = configuration.GetConnectionString("conexion");
         }
 
-        public List<Almacen> list()
+        public List<Almacen> List()
         {
             List<Almacen> lista = new List<Almacen>();
-            string cnx = _configuration.GetConnectionString("conexion");
 
-            using (SqlConnection cn = new SqlConnection(cnx))
+            using (SqlConnection con = new SqlConnection(_conexion))
             {
-                SqlCommand cmd = new SqlCommand("sp_list_almacenes", cn) { CommandType = CommandType.StoredProcedure };
-                cn.Open();
-                using (SqlDataReader dr = cmd.ExecuteReader())
+                using (SqlCommand command = new SqlCommand("sp_listar_almacenes", con))
                 {
-                    while (dr.Read())
+                    command.CommandType = CommandType.StoredProcedure;
+                    con.Open();
+                    using (SqlDataReader reader = command.ExecuteReader())
                     {
-                        lista.Add(new Almacen
+                        while (reader.Read())
                         {
-                            // 1. Convertimos a Int64 porque IdAlmacen es long
-                            IdAlmacen = Convert.ToInt64(dr["idAlmacen"]),
-                            Nombre = dr["nombre"].ToString() ?? string.Empty,
-                            Ubicacion = dr["ubicacion"].ToString() ?? string.Empty,
-                            // 2. Mapeamos la propiedad opcional Descripcion controlando los nulos de la BD
-                            Descripcion = dr["descripcion"] == DBNull.Value ? null : dr["descripcion"].ToString(),
-                            Estado = Convert.ToBoolean(dr["estado"]),
-                            FechaCreacion = Convert.ToDateTime(dr["fechaCreacion"]),
-                            FechaActualizacion = Convert.ToDateTime(dr["fechaActualizacion"])
-                        });
+                            lista.Add(new Almacen
+                            {
+                                IdAlmacen = reader.GetInt64(0),
+                                Nombre = reader.GetString(1),
+                                Ubicacion = reader.GetString(2),
+                                Descripcion = reader.IsDBNull(3) ? null : reader.GetString(3),
+                                Estado = reader.GetBoolean(4),
+                                FechaCreacion = reader.GetDateTime(5),
+                                FechaActualizacion = reader.GetDateTime(6)
+                            });
+                        }
                     }
                 }
             }
             return lista;
         }
 
-        // 3. Corregido: Ahora la firma acepta 'long' tal como exige la interfaz
-        public Almacen getAlmacen(long idAlmacen)
+        public Almacen GetAlmacen(long idAlmacen)
         {
-            Almacen? almacen = null;
-            string cnx = _configuration.GetConnectionString("conexion");
+            Almacen almacen = null;
 
-            using (SqlConnection cn = new SqlConnection(cnx))
+            using (SqlConnection con = new SqlConnection(_conexion))
             {
-                SqlCommand cmd = new SqlCommand("sp_find_almacen_by_id", cn) { CommandType = CommandType.StoredProcedure };
-                cmd.Parameters.AddWithValue("@idAlmacen", idAlmacen);
-                cn.Open();
-                using (SqlDataReader dr = cmd.ExecuteReader())
+                using (SqlCommand command = new SqlCommand("sp_buscar_almacen", con))
                 {
-                    if (dr.Read())
+                    command.CommandType = CommandType.StoredProcedure;
+                    command.Parameters.AddWithValue("@IdAlmacen", idAlmacen);
+                    con.Open();
+                    using (SqlDataReader reader = command.ExecuteReader())
                     {
-                        almacen = new Almacen
+                        if (reader.Read())
                         {
-                            IdAlmacen = Convert.ToInt64(dr["idAlmacen"]),
-                            Nombre = dr["nombre"].ToString() ?? string.Empty,
-                            Ubicacion = dr["ubicacion"].ToString() ?? string.Empty,
-                            Descripcion = dr["descripcion"] == DBNull.Value ? null : dr["descripcion"].ToString(),
-                            Estado = Convert.ToBoolean(dr["estado"]),
-                            FechaCreacion = Convert.ToDateTime(dr["fechaCreacion"]),
-                            FechaActualizacion = Convert.ToDateTime(dr["fechaActualizacion"])
-                        };
+                            almacen = new Almacen
+                            {
+                                IdAlmacen = reader.GetInt64(0),
+                                Nombre = reader.GetString(1),
+                                Ubicacion = reader.GetString(2),
+                                Descripcion = reader.IsDBNull(3) ? null : reader.GetString(3),
+                                Estado = reader.GetBoolean(4),
+                                FechaCreacion = reader.GetDateTime(5),
+                                FechaActualizacion = reader.GetDateTime(6)
+                            };
+                        }
                     }
                 }
             }
-            return almacen!;
+            return almacen;
         }
 
-        public bool insert(Almacen almacen)
+        public bool Insert(Almacen almacen)
         {
-            bool respuesta = false;
-            string cnx = _configuration.GetConnectionString("conexion");
-
-            using (SqlConnection cn = new SqlConnection(cnx))
+            bool resp = false;
+            using (SqlConnection con = new SqlConnection(_conexion))
             {
-                SqlCommand cmd = new SqlCommand("sp_insert_almacen", cn) { CommandType = CommandType.StoredProcedure };
-                cmd.Parameters.AddWithValue("@nombre", almacen.Nombre);
-                cmd.Parameters.AddWithValue("@ubicacion", almacen.Ubicacion);
-                // 4. Agregamos el parámetro @descripcion controlando si viene vacío
-                cmd.Parameters.AddWithValue("@descripcion", almacen.Descripcion ?? (object)DBNull.Value);
-                cmd.Parameters.AddWithValue("@estado", almacen.Estado);
+                con.Open();
+                SqlTransaction transaction = con.BeginTransaction();
+                try
+                {
+                    using (SqlCommand command = new SqlCommand("sp_insert_almacen", con))
+                    {
+                        command.Transaction = transaction;
+                        command.CommandType = CommandType.StoredProcedure;
+                        command.Parameters.AddWithValue("@Nombre", almacen.Nombre);
+                        command.Parameters.AddWithValue("@Ubicacion", almacen.Ubicacion);
+                        command.Parameters.AddWithValue("@Descripcion", (object)almacen.Descripcion ?? DBNull.Value);
 
-                cn.Open();
-                int filasAfectadas = cmd.ExecuteNonQuery();
-                if (filasAfectadas > 0) respuesta = true;
+                        var id = command.ExecuteScalar();
+                        if (id != null)
+                        {
+                            almacen.IdAlmacen = Convert.ToInt64(id);
+                            resp = true;
+                        }
+
+                        transaction.Commit();
+                    }
+                }
+                catch (Exception)
+                {
+                    transaction.Rollback();
+                    throw;
+                }
             }
-            return respuesta;
+            return resp;
         }
 
-        public bool update(Almacen almacen)
+        public bool Update(Almacen almacen)
         {
-            bool respuesta = false;
-            string cnx = _configuration.GetConnectionString("conexion");
-
-            using (SqlConnection cn = new SqlConnection(cnx))
+            bool resp = false;
+            using (SqlConnection con = new SqlConnection(_conexion))
             {
-                SqlCommand cmd = new SqlCommand("sp_update_almacen", cn) { CommandType = CommandType.StoredProcedure };
-                cmd.Parameters.AddWithValue("@idAlmacen", almacen.IdAlmacen);
-                cmd.Parameters.AddWithValue("@nombre", almacen.Nombre);
-                cmd.Parameters.AddWithValue("@ubicacion", almacen.Ubicacion);
-                cmd.Parameters.AddWithValue("@descripcion", almacen.Descripcion ?? (object)DBNull.Value);
-                cmd.Parameters.AddWithValue("@estado", almacen.Estado);
+                con.Open();
+                SqlTransaction transaction = con.BeginTransaction();
+                try
+                {
+                    using (SqlCommand command = new SqlCommand("sp_update_almacen", con))
+                    {
+                        command.Transaction = transaction;
+                        command.CommandType = CommandType.StoredProcedure;
+                        command.Parameters.AddWithValue("@IdAlmacen", almacen.IdAlmacen);
+                        command.Parameters.AddWithValue("@Nombre", almacen.Nombre);
+                        command.Parameters.AddWithValue("@Ubicacion", almacen.Ubicacion);
+                        command.Parameters.AddWithValue("@Descripcion", (object)almacen.Descripcion ?? DBNull.Value);
+                        command.Parameters.AddWithValue("@Estado", almacen.Estado);
 
-                cn.Open();
-                int filasAfectadas = cmd.ExecuteNonQuery();
-                if (filasAfectadas > 0) respuesta = true;
+                        resp = command.ExecuteNonQuery() > 0;
+                        transaction.Commit();
+                    }
+                }
+                catch (Exception)
+                {
+                    transaction.Rollback();
+                    throw;
+                }
             }
-            return respuesta;
+            return resp;
         }
 
-        // 5. Corregido: Ahora la firma acepta 'long' tal como exige la interfaz
-        public bool delete(long idAlmacen)
+        public bool Delete(long idAlmacen)
         {
-            bool respuesta = false;
-            string cnx = _configuration.GetConnectionString("conexion");
-
-            using (SqlConnection cn = new SqlConnection(cnx))
+            bool resp = false;
+            using (SqlConnection con = new SqlConnection(_conexion))
             {
-                SqlCommand cmd = new SqlCommand("sp_EliminarAlmacen", cn) { CommandType = CommandType.StoredProcedure };
-                cmd.Parameters.AddWithValue("@idAlmacen", idAlmacen);
+                con.Open();
+                SqlTransaction transaction = con.BeginTransaction();
+                try
+                {
+                    using (SqlCommand command = new SqlCommand("sp_delete_almacen", con))
+                    {
+                        command.Transaction = transaction;
+                        command.CommandType = CommandType.StoredProcedure;
+                        command.Parameters.AddWithValue("@IdAlmacen", idAlmacen);
 
-                cn.Open();
-                int filasAfectadas = cmd.ExecuteNonQuery();
-                if (filasAfectadas > 0) respuesta = true;
+                        resp = command.ExecuteNonQuery() > 0;
+                        transaction.Commit();
+                    }
+                }
+                catch (Exception)
+                {
+                    transaction.Rollback();
+                    throw;
+                }
             }
-            return respuesta;
+            return resp;
         }
     }
 }

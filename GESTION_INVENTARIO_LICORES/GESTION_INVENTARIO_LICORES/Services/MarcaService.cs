@@ -7,20 +7,20 @@ namespace GESTION_INVENTARIO_LICORES.Services
 {
     public class MarcaService : IMarcaService
     {
-        private readonly string? conexion;
+        private readonly string? _conexion;
 
         public MarcaService(IConfiguration configuration)
         {
-            conexion = configuration.GetConnectionString("conexion");
+            _conexion = configuration.GetConnectionString("conexion");
         }
 
-        public List<Marca> list()
+        public List<Marca> List()
         {
-            List<Marca> temporal = new List<Marca>();
+            List<Marca> lista = new List<Marca>();
 
-            using (SqlConnection con = new SqlConnection(conexion))
+            using (SqlConnection con = new SqlConnection(_conexion))
             {
-                using (SqlCommand command = new SqlCommand("sp_list_marcas", con))
+                using (SqlCommand command = new SqlCommand("sp_listar_marcas", con))
                 {
                     command.CommandType = CommandType.StoredProcedure;
                     con.Open();
@@ -28,7 +28,7 @@ namespace GESTION_INVENTARIO_LICORES.Services
                     {
                         while (reader.Read())
                         {
-                            Marca marca = new Marca
+                            lista.Add(new Marca
                             {
                                 IdMarca = reader.GetInt64(0),
                                 Nombre = reader.GetString(1),
@@ -36,22 +36,21 @@ namespace GESTION_INVENTARIO_LICORES.Services
                                 Estado = reader.GetBoolean(3),
                                 FechaCreacion = reader.GetDateTime(4),
                                 FechaActualizacion = reader.GetDateTime(5)
-                            };
-                            temporal.Add(marca);
+                            });
                         }
                     }
                 }
             }
-            return temporal;
+            return lista;
         }
 
-        public Marca getMarca(long idMarca)
+        public Marca GetMarca(long idMarca)
         {
-            Marca? marca = null;
+            Marca marca = null;
 
-            using (SqlConnection con = new SqlConnection(conexion))
+            using (SqlConnection con = new SqlConnection(_conexion))
             {
-                using (SqlCommand command = new SqlCommand("sp_find_marca_by_id", con))
+                using (SqlCommand command = new SqlCommand("sp_buscar_marca", con))
                 {
                     command.CommandType = CommandType.StoredProcedure;
                     command.Parameters.AddWithValue("@IdMarca", idMarca);
@@ -76,10 +75,10 @@ namespace GESTION_INVENTARIO_LICORES.Services
             return marca;
         }
 
-        public bool insert(Marca marca)
+        public bool Insert(Marca marca)
         {
             bool resp = false;
-            using (SqlConnection con = new SqlConnection(conexion))
+            using (SqlConnection con = new SqlConnection(_conexion))
             {
                 con.Open();
                 SqlTransaction transaction = con.BeginTransaction();
@@ -90,25 +89,31 @@ namespace GESTION_INVENTARIO_LICORES.Services
                         command.Transaction = transaction;
                         command.CommandType = CommandType.StoredProcedure;
                         command.Parameters.AddWithValue("@Nombre", marca.Nombre);
-                        command.Parameters.AddWithValue("@PaisOrigen", (object?)marca.PaisOrigen ?? DBNull.Value);
+                        command.Parameters.AddWithValue("@PaisOrigen", (object)marca.PaisOrigen ?? DBNull.Value);
 
-                        resp = command.ExecuteNonQuery() > 0;
+                        var id = command.ExecuteScalar();
+                        if (id != null)
+                        {
+                            marca.IdMarca = Convert.ToInt64(id);
+                            resp = true;
+                        }
+
                         transaction.Commit();
                     }
                 }
-                catch (Exception ex)
+                catch (Exception)
                 {
                     transaction.Rollback();
-                    System.Diagnostics.Debug.WriteLine("ERROR SQL: " + ex.Message);
+                    throw;
                 }
             }
             return resp;
         }
 
-        public bool update(Marca marca)
+        public bool Update(Marca marca)
         {
             bool resp = false;
-            using (SqlConnection con = new SqlConnection(conexion))
+            using (SqlConnection con = new SqlConnection(_conexion))
             {
                 con.Open();
                 SqlTransaction transaction = con.BeginTransaction();
@@ -120,7 +125,7 @@ namespace GESTION_INVENTARIO_LICORES.Services
                         command.CommandType = CommandType.StoredProcedure;
                         command.Parameters.AddWithValue("@IdMarca", marca.IdMarca);
                         command.Parameters.AddWithValue("@Nombre", marca.Nombre);
-                        command.Parameters.AddWithValue("@PaisOrigen", (object?)marca.PaisOrigen ?? DBNull.Value);
+                        command.Parameters.AddWithValue("@PaisOrigen", (object)marca.PaisOrigen ?? DBNull.Value);
                         command.Parameters.AddWithValue("@Estado", marca.Estado);
 
                         resp = command.ExecuteNonQuery() > 0;
@@ -130,15 +135,16 @@ namespace GESTION_INVENTARIO_LICORES.Services
                 catch (Exception)
                 {
                     transaction.Rollback();
+                    throw;
                 }
             }
             return resp;
         }
 
-        public bool delete(long idMarca)
+        public bool Delete(long idMarca)
         {
             bool resp = false;
-            using (SqlConnection con = new SqlConnection(conexion))
+            using (SqlConnection con = new SqlConnection(_conexion))
             {
                 con.Open();
                 SqlTransaction transaction = con.BeginTransaction();
@@ -157,6 +163,7 @@ namespace GESTION_INVENTARIO_LICORES.Services
                 catch (Exception)
                 {
                     transaction.Rollback();
+                    throw;
                 }
             }
             return resp;

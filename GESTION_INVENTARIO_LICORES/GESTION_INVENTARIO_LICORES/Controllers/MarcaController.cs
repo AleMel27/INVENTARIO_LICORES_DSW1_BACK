@@ -1,4 +1,5 @@
 ﻿using Microsoft.AspNetCore.Mvc;
+using Microsoft.Data.SqlClient;
 using GESTION_INVENTARIO_LICORES.Interfaces;
 using GESTION_INVENTARIO_LICORES.Models;
 
@@ -18,33 +19,33 @@ namespace GESTION_INVENTARIO_LICORES.Controllers
         [HttpGet]
         public async Task<IActionResult> Get()
         {
-            var lista = _service.list();
+            var lista = _service.List();
             if (lista.Count > 0)
             {
                 return Ok(new Response<List<Marca>>
                 {
                     Success = true,
-                    Message = "Marcas obtenidas correctamente.",
+                    Message = "Marcas obtenidas con éxito.",
                     Data = lista
                 });
             }
             return BadRequest(new Response<object>
             {
                 Success = false,
-                Message = "No se encontraron marcas."
+                Message = "No se encontraron marcas registradas."
             });
         }
 
-        [HttpGet("{id}")]
-        public async Task<IActionResult> GetById(long id)
+        [HttpGet("{idMarca}")]
+        public async Task<IActionResult> GetById(long idMarca)
         {
-            var marca = _service.getMarca(id);
+            var marca = _service.GetMarca(idMarca);
             if (marca == null)
             {
                 return NotFound(new Response<object>
                 {
                     Success = false,
-                    Message = "La marca no existe."
+                    Message = "La marca solicitada no existe."
                 });
             }
             return Ok(new Response<Marca>
@@ -56,30 +57,41 @@ namespace GESTION_INVENTARIO_LICORES.Controllers
         }
 
         [HttpPost]
-        public async Task<IActionResult> Post(Marca marca)
+        public async Task<IActionResult> Post([FromBody] Marca marca)
         {
-            var resp = _service.insert(marca);
-            if (resp)
+            try
             {
-                return Created("", new Response<Marca>
+                var resp = _service.Insert(marca);
+                if (resp)
                 {
-                    Success = true,
-                    Message = "Marca registrada con éxito.",
-                    Data = marca
+                    return Created("", new Response<Marca>
+                    {
+                        Success = true,
+                        Message = "Marca registrada correctamente.",
+                        Data = marca
+                    });
+                }
+                return BadRequest(new Response<object>
+                {
+                    Success = false,
+                    Message = "Hubo un error al registrar la marca."
                 });
             }
-            return BadRequest(new Response<object>
+            catch (SqlException ex)
             {
-                Success = false,
-                Message = "Error al registrar la marca."
-            });
+                return BadRequest(new Response<object>
+                {
+                    Success = false,
+                    Message = ex.Message
+                });
+            }
         }
 
         [HttpPut]
         public async Task<IActionResult> Put([FromBody] Marca marca)
         {
-            var existente = _service.getMarca(marca.IdMarca);
-            if (existente == null)
+            var existe = _service.GetMarca(marca.IdMarca);
+            if (existe == null)
             {
                 return NotFound(new Response<object>
                 {
@@ -87,52 +99,73 @@ namespace GESTION_INVENTARIO_LICORES.Controllers
                     Message = "No se encontró la marca para actualizar."
                 });
             }
-
-            var resp = _service.update(marca);
-            if (resp)
+            try
             {
-                return Ok(new Response<Marca>
+                var resp = _service.Update(marca);
+                if (resp)
                 {
-                    Success = true,
-                    Message = "Marca actualizada correctamente.",
-                    Data = marca
+                    return Ok(new Response<Marca>
+                    {
+                        Success = true,
+                        Message = "Se actualizó la marca correctamente.",
+                        Data = marca
+                    });
+                }
+                return BadRequest(new Response<object>
+                {
+                    Success = false,
+                    Message = "Hubo un error al actualizar la marca."
                 });
             }
-            return BadRequest(new Response<object>
+            catch (SqlException ex)
             {
-                Success = false,
-                Message = "Error al actualizar la marca."
-            });
+                return BadRequest(new Response<object>
+                {
+                    Success = false,
+                    Message = ex.Message
+                });
+            }
         }
 
-        [HttpDelete("{id}")]
-        public async Task<IActionResult> Delete(long id)
+        [HttpDelete("{idMarca}")]
+        public async Task<IActionResult> Delete(long idMarca)
         {
-            var existente = _service.getMarca(id);
-            if (existente == null)
+            var marca = _service.GetMarca(idMarca);
+            if (marca == null)
             {
                 return NotFound(new Response<object>
                 {
                     Success = false,
-                    Message = "No se encontró la marca para eliminar."
+                    Message = "No se encontró la marca para dar de baja."
                 });
             }
-
-            var resp = _service.delete(id);
-            if (resp)
+            try
             {
-                return Ok(new Response<Marca>
+                var resp = _service.Delete(idMarca);
+                if (resp)
                 {
-                    Success = true,
-                    Message = "Marca eliminada con éxito.",
-                    Data = existente
+                    marca.Estado = false;
+                    return Ok(new Response<Marca>
+                    {
+                        Success = true,
+                        Message = "Se dio de baja la marca correctamente.",
+                        Data = marca
+                    });
+                }
+                return BadRequest(new Response<object>
+                {
+                    Success = false,
+                    Message = "Hubo un error al dar de baja la marca."
                 });
             }
-            return BadRequest(new Response<object>
+            catch (SqlException ex)
             {
-                Success = false,
-                Message = "Error al eliminar la marca."
-            });
+                return BadRequest(new Response<object>
+                {
+                    Success = false,
+                    Message = ex.Message
+                });
+            }
         }
     }
 }

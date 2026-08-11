@@ -1,4 +1,5 @@
 ﻿using Microsoft.AspNetCore.Mvc;
+using Microsoft.Data.SqlClient;
 using GESTION_INVENTARIO_LICORES.Interfaces;
 using GESTION_INVENTARIO_LICORES.Models;
 
@@ -18,68 +19,155 @@ namespace GESTION_INVENTARIO_LICORES.Controllers
         [HttpGet]
         public async Task<IActionResult> Get()
         {
-            var lista = _service.list();
+            var lista = _service.List();
             if (lista.Count > 0)
             {
-                return Ok(new Response<List<Producto>> { Success = true, Message = "Productos obtenidos correctamente.", Data = lista });
+                return Ok(new Response<List<Producto>>
+                {
+                    Success = true,
+                    Message = "Productos obtenidos con éxito.",
+                    Data = lista
+                });
             }
-            return BadRequest(new Response<object> { Success = false, Message = "No se encontraron productos." });
+            return BadRequest(new Response<object>
+            {
+                Success = false,
+                Message = "No se encontraron productos registrados."
+            });
         }
 
-        [HttpGet("{id}")]
-        public async Task<IActionResult> GetById(long id)
+        [HttpGet("{idProducto}")]
+        public async Task<IActionResult> GetById(long idProducto)
         {
-            var producto = _service.getProducto(id);
+            var producto = _service.GetProducto(idProducto);
             if (producto == null)
             {
-                return NotFound(new Response<object> { Success = false, Message = "El producto no existe." });
+                return NotFound(new Response<object>
+                {
+                    Success = false,
+                    Message = "El producto solicitado no existe."
+                });
             }
-            return Ok(new Response<Producto> { Success = true, Message = "Producto encontrado.", Data = producto });
+            return Ok(new Response<Producto>
+            {
+                Success = true,
+                Message = "Producto encontrado.",
+                Data = producto
+            });
         }
 
         [HttpPost]
         public async Task<IActionResult> Post([FromBody] Producto producto)
         {
-            var resp = _service.insert(producto);
-            if (resp)
+            try
             {
-                return Created("", new Response<Producto> { Success = true, Message = "Producto registrado con éxito.", Data = producto });
+                var resp = _service.Insert(producto);
+                if (resp)
+                {
+                    return Created("", new Response<Producto>
+                    {
+                        Success = true,
+                        Message = "Producto registrado correctamente.",
+                        Data = producto
+                    });
+                }
+                return BadRequest(new Response<object>
+                {
+                    Success = false,
+                    Message = "Hubo un error al registrar el producto."
+                });
             }
-            return BadRequest(new Response<object> { Success = false, Message = "Error al registrar el producto." });
+            catch (SqlException ex)
+            {
+                return BadRequest(new Response<object>
+                {
+                    Success = false,
+                    Message = ex.Message
+                });
+            }
         }
 
         [HttpPut]
         public async Task<IActionResult> Put([FromBody] Producto producto)
         {
-            var existente = _service.getProducto(producto.IdProducto);
-            if (existente == null)
+            var existe = _service.GetProducto(producto.IdProducto);
+            if (existe == null)
             {
-                return NotFound(new Response<object> { Success = false, Message = "No se encontró el producto para actualizar." });
+                return NotFound(new Response<object>
+                {
+                    Success = false,
+                    Message = "No se encontró el producto para actualizar."
+                });
             }
 
-            var resp = _service.update(producto);
-            if (resp)
+            try
             {
-                return Ok(new Response<Producto> { Success = true, Message = "Producto actualizado correctamente.", Data = producto });
+                var resp = _service.Update(producto);
+                if (resp)
+                {
+                    return Ok(new Response<Producto>
+                    {
+                        Success = true,
+                        Message = "Se actualizó el producto correctamente.",
+                        Data = producto
+                    });
+                }
+                return BadRequest(new Response<object>
+                {
+                    Success = false,
+                    Message = "Hubo un error al actualizar el producto."
+                });
             }
-            return BadRequest(new Response<object> { Success = false, Message = "Error al actualizar el producto." });
+            catch (SqlException ex)
+            {
+                return BadRequest(new Response<object>
+                {
+                    Success = false,
+                    Message = ex.Message
+                });
+            }
         }
 
-        [HttpDelete("{id}")]
-        public async Task<IActionResult> Delete(long id)
+        [HttpDelete("{idProducto}")]
+        public async Task<IActionResult> Delete(long idProducto)
         {
-            var existente = _service.getProducto(id);
-            if (existente == null)
+            var producto = _service.GetProducto(idProducto);
+            if (producto == null)
             {
-                return NotFound(new Response<object> { Success = false, Message = "No se encontró el producto para eliminar." });
+                return NotFound(new Response<object>
+                {
+                    Success = false,
+                    Message = "No se encontró el producto para dar de baja."
+                });
             }
 
-            var resp = _service.delete(id);
-            if (resp)
+            try
             {
-                return Ok(new Response<Producto> { Success = true, Message = "Producto eliminado con éxito.", Data = existente });
+                var resp = _service.Delete(idProducto);
+                if (resp)
+                {
+                    producto.Estado = false;
+                    return Ok(new Response<Producto>
+                    {
+                        Success = true,
+                        Message = "Se dio de baja al producto correctamente.",
+                        Data = producto
+                    });
+                }
+                return BadRequest(new Response<object>
+                {
+                    Success = false,
+                    Message = "Hubo un error al dar de baja al producto."
+                });
             }
-            return BadRequest(new Response<object> { Success = false, Message = "Error al eliminar el producto." });
+            catch (SqlException ex)
+            {
+                return BadRequest(new Response<object>
+                {
+                    Success = false,
+                    Message = ex.Message
+                });
+            }
         }
     }
 }

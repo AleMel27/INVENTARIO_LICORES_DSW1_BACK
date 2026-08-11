@@ -7,20 +7,20 @@ namespace GESTION_INVENTARIO_LICORES.Services
 {
     public class CategoriaService : ICategoriaService
     {
-        private readonly string? conexion;
+        private readonly string? _conexion;
 
         public CategoriaService(IConfiguration configuration)
         {
-            conexion = configuration.GetConnectionString("conexion");
+            _conexion = configuration.GetConnectionString("conexion");
         }
 
-        public List<Categoria> list()
+        public List<Categoria> List()
         {
-            List<Categoria> temporal = new List<Categoria>();
+            List<Categoria> lista = new List<Categoria>();
 
-            using (SqlConnection con = new SqlConnection(conexion))
+            using (SqlConnection con = new SqlConnection(_conexion))
             {
-                using (SqlCommand command = new SqlCommand("sp_list_categorias", con))
+                using (SqlCommand command = new SqlCommand("sp_listar_categorias", con))
                 {
                     command.CommandType = CommandType.StoredProcedure;
                     con.Open();
@@ -28,7 +28,7 @@ namespace GESTION_INVENTARIO_LICORES.Services
                     {
                         while (reader.Read())
                         {
-                            Categoria cat = new Categoria
+                            lista.Add(new Categoria
                             {
                                 IdCategoria = reader.GetInt64(0),
                                 Nombre = reader.GetString(1),
@@ -36,22 +36,20 @@ namespace GESTION_INVENTARIO_LICORES.Services
                                 Estado = reader.GetBoolean(3),
                                 FechaCreacion = reader.GetDateTime(4),
                                 FechaActualizacion = reader.GetDateTime(5)
-                            };
-                            temporal.Add(cat);
+                            });
                         }
                     }
                 }
             }
-            return temporal;
+            return lista;
         }
-
-        public Categoria getCategoria(long idCategoria)
+        public Categoria GetCategoria(long idCategoria)
         {
-            Categoria? cat = null;
+            Categoria categoria = null;
 
-            using (SqlConnection con = new SqlConnection(conexion))
+            using (SqlConnection con = new SqlConnection(_conexion))
             {
-                using (SqlCommand command = new SqlCommand("sp_find_categoria_by_id", con))
+                using (SqlCommand command = new SqlCommand("sp_buscar_categoria", con))
                 {
                     command.CommandType = CommandType.StoredProcedure;
                     command.Parameters.AddWithValue("@IdCategoria", idCategoria);
@@ -60,7 +58,7 @@ namespace GESTION_INVENTARIO_LICORES.Services
                     {
                         if (reader.Read())
                         {
-                            cat = new Categoria
+                            categoria = new Categoria
                             {
                                 IdCategoria = reader.GetInt64(0),
                                 Nombre = reader.GetString(1),
@@ -73,13 +71,12 @@ namespace GESTION_INVENTARIO_LICORES.Services
                     }
                 }
             }
-            return cat;
+            return categoria;
         }
-
-        public bool insert(Categoria categoria)
+        public bool Insert(Categoria categoria)
         {
             bool resp = false;
-            using (SqlConnection con = new SqlConnection(conexion))
+            using (SqlConnection con = new SqlConnection(_conexion))
             {
                 con.Open();
                 SqlTransaction transaction = con.BeginTransaction();
@@ -90,24 +87,30 @@ namespace GESTION_INVENTARIO_LICORES.Services
                         command.Transaction = transaction;
                         command.CommandType = CommandType.StoredProcedure;
                         command.Parameters.AddWithValue("@Nombre", categoria.Nombre);
-                        command.Parameters.AddWithValue("@Descripcion", (object?)categoria.Descripcion ?? DBNull.Value);
+                        command.Parameters.AddWithValue("@Descripcion", (object)categoria.Descripcion ?? DBNull.Value);
 
-                        resp = command.ExecuteNonQuery() > 0;
+                        var id = command.ExecuteScalar();
+                        if (id != null)
+                        {
+                            categoria.IdCategoria = Convert.ToInt64(id);
+                            resp = true;
+                        }
+
                         transaction.Commit();
                     }
                 }
                 catch (Exception)
                 {
                     transaction.Rollback();
+                    throw;
                 }
             }
             return resp;
         }
-
-        public bool update(Categoria categoria)
+        public bool Update(Categoria categoria)
         {
             bool resp = false;
-            using (SqlConnection con = new SqlConnection(conexion))
+            using (SqlConnection con = new SqlConnection(_conexion))
             {
                 con.Open();
                 SqlTransaction transaction = con.BeginTransaction();
@@ -119,7 +122,7 @@ namespace GESTION_INVENTARIO_LICORES.Services
                         command.CommandType = CommandType.StoredProcedure;
                         command.Parameters.AddWithValue("@IdCategoria", categoria.IdCategoria);
                         command.Parameters.AddWithValue("@Nombre", categoria.Nombre);
-                        command.Parameters.AddWithValue("@Descripcion", (object?)categoria.Descripcion ?? DBNull.Value);
+                        command.Parameters.AddWithValue("@Descripcion", (object)categoria.Descripcion ?? DBNull.Value);
                         command.Parameters.AddWithValue("@Estado", categoria.Estado);
 
                         resp = command.ExecuteNonQuery() > 0;
@@ -129,15 +132,15 @@ namespace GESTION_INVENTARIO_LICORES.Services
                 catch (Exception)
                 {
                     transaction.Rollback();
+                    throw;
                 }
             }
             return resp;
         }
-
-        public bool delete(long idCategoria)
+        public bool Delete(long idCategoria)
         {
             bool resp = false;
-            using (SqlConnection con = new SqlConnection(conexion))
+            using (SqlConnection con = new SqlConnection(_conexion))
             {
                 con.Open();
                 SqlTransaction transaction = con.BeginTransaction();
@@ -156,6 +159,7 @@ namespace GESTION_INVENTARIO_LICORES.Services
                 catch (Exception)
                 {
                     transaction.Rollback();
+                    throw;
                 }
             }
             return resp;

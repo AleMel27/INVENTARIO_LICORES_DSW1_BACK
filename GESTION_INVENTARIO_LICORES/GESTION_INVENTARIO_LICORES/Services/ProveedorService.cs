@@ -1,26 +1,26 @@
-﻿using GESTION_INVENTARIO_LICORES.Interfaces;
-using GESTION_INVENTARIO_LICORES.Models;
-using Microsoft.Data.SqlClient;
+﻿using Microsoft.Data.SqlClient;
 using System.Data;
+using GESTION_INVENTARIO_LICORES.Interfaces;
+using GESTION_INVENTARIO_LICORES.Models;
 
 namespace GESTION_INVENTARIO_LICORES.Services
 {
-    public class ProveedorService: IProveedorService
+    public class ProveedorService : IProveedorService
     {
-        private readonly string? conexion;
+        private readonly string? _conexion;
 
         public ProveedorService(IConfiguration configuration)
         {
-            conexion = configuration.GetConnectionString("conexion");
+            _conexion = configuration.GetConnectionString("conexion");
         }
 
-        public List<Proveedor> list()
+        public List<Proveedor> List()
         {
-            List<Proveedor> temporal = new List<Proveedor>();
+            List<Proveedor> lista = new List<Proveedor>();
 
-            using (SqlConnection con = new SqlConnection(conexion))
+            using (SqlConnection con = new SqlConnection(_conexion))
             {
-                using (SqlCommand command = new SqlCommand("sp_list_proveedores", con))
+                using (SqlCommand command = new SqlCommand("sp_listar_proveedores", con))
                 {
                     command.CommandType = CommandType.StoredProcedure;
                     con.Open();
@@ -28,7 +28,7 @@ namespace GESTION_INVENTARIO_LICORES.Services
                     {
                         while (reader.Read())
                         {
-                            Proveedor proveedor = new Proveedor
+                            lista.Add(new Proveedor
                             {
                                 IdProveedor = reader.GetInt64(0),
                                 Ruc = reader.GetString(1),
@@ -39,22 +39,20 @@ namespace GESTION_INVENTARIO_LICORES.Services
                                 Estado = reader.GetBoolean(6),
                                 FechaCreacion = reader.GetDateTime(7),
                                 FechaActualizacion = reader.GetDateTime(8)
-                            };
-                            temporal.Add(proveedor);
+                            });
                         }
                     }
                 }
             }
-            return temporal;
+            return lista;
         }
-
-        public Proveedor getProveedor(long idProveedor)
+        public Proveedor GetProveedor(long idProveedor)
         {
-            Proveedor? proveedor = null;
+            Proveedor proveedor = null;
 
-            using (SqlConnection con = new SqlConnection(conexion))
+            using (SqlConnection con = new SqlConnection(_conexion))
             {
-                using (SqlCommand command = new SqlCommand("sp_find_proveedor_by_id", con))
+                using (SqlCommand command = new SqlCommand("sp_buscar_proveedor", con))
                 {
                     command.CommandType = CommandType.StoredProcedure;
                     command.Parameters.AddWithValue("@IdProveedor", idProveedor);
@@ -81,11 +79,10 @@ namespace GESTION_INVENTARIO_LICORES.Services
             }
             return proveedor;
         }
-
-        public bool insert(Proveedor proveedor)
+        public bool Insert(Proveedor proveedor)
         {
             bool resp = false;
-            using (SqlConnection con = new SqlConnection(conexion))
+            using (SqlConnection con = new SqlConnection(_conexion))
             {
                 con.Open();
                 SqlTransaction transaction = con.BeginTransaction();
@@ -97,27 +94,32 @@ namespace GESTION_INVENTARIO_LICORES.Services
                         command.CommandType = CommandType.StoredProcedure;
                         command.Parameters.AddWithValue("@Ruc", proveedor.Ruc);
                         command.Parameters.AddWithValue("@RazonSocial", proveedor.RazonSocial);
-                        command.Parameters.AddWithValue("@Telefono", (object?)proveedor.Telefono ?? DBNull.Value);
-                        command.Parameters.AddWithValue("@Correo", (object?)proveedor.Correo ?? DBNull.Value);
-                        command.Parameters.AddWithValue("@Direccion", (object?)proveedor.Direccion ?? DBNull.Value);
+                        command.Parameters.AddWithValue("@Telefono", (object)proveedor.Telefono ?? DBNull.Value);
+                        command.Parameters.AddWithValue("@Correo", (object)proveedor.Correo ?? DBNull.Value);
+                        command.Parameters.AddWithValue("@Direccion", (object)proveedor.Direccion ?? DBNull.Value);
 
-                        resp = command.ExecuteNonQuery() > 0;
+                        var id = command.ExecuteScalar();
+                        if (id != null)
+                        {
+                            proveedor.IdProveedor = Convert.ToInt64(id);
+                            resp = true;
+                        }
+
                         transaction.Commit();
                     }
                 }
-                catch (Exception ex)
+                catch (Exception)
                 {
                     transaction.Rollback();
-                    System.Diagnostics.Debug.WriteLine("ERROR SQL: " + ex.Message);
+                    throw;
                 }
             }
             return resp;
         }
-
-        public bool update(Proveedor proveedor)
+        public bool Update(Proveedor proveedor)
         {
             bool resp = false;
-            using (SqlConnection con = new SqlConnection(conexion))
+            using (SqlConnection con = new SqlConnection(_conexion))
             {
                 con.Open();
                 SqlTransaction transaction = con.BeginTransaction();
@@ -130,28 +132,27 @@ namespace GESTION_INVENTARIO_LICORES.Services
                         command.Parameters.AddWithValue("@IdProveedor", proveedor.IdProveedor);
                         command.Parameters.AddWithValue("@Ruc", proveedor.Ruc);
                         command.Parameters.AddWithValue("@RazonSocial", proveedor.RazonSocial);
-                        command.Parameters.AddWithValue("@Telefono", (object?)proveedor.Telefono ?? DBNull.Value);
-                        command.Parameters.AddWithValue("@Correo", (object?)proveedor.Correo ?? DBNull.Value);
-                        command.Parameters.AddWithValue("@Direccion", (object?)proveedor.Direccion ?? DBNull.Value);
+                        command.Parameters.AddWithValue("@Telefono", (object)proveedor.Telefono ?? DBNull.Value);
+                        command.Parameters.AddWithValue("@Correo", (object)proveedor.Correo ?? DBNull.Value);
+                        command.Parameters.AddWithValue("@Direccion", (object)proveedor.Direccion ?? DBNull.Value);
                         command.Parameters.AddWithValue("@Estado", proveedor.Estado);
 
                         resp = command.ExecuteNonQuery() > 0;
                         transaction.Commit();
                     }
                 }
-                catch (Exception ex)
+                catch (Exception)
                 {
                     transaction.Rollback();
-                    System.Diagnostics.Debug.WriteLine("ERROR SQL: " + ex.Message);
+                    throw;
                 }
             }
             return resp;
         }
-
-        public bool delete(long idProveedor)
+        public bool Delete(long idProveedor)
         {
             bool resp = false;
-            using (SqlConnection con = new SqlConnection(conexion))
+            using (SqlConnection con = new SqlConnection(_conexion))
             {
                 con.Open();
                 SqlTransaction transaction = con.BeginTransaction();
@@ -167,14 +168,13 @@ namespace GESTION_INVENTARIO_LICORES.Services
                         transaction.Commit();
                     }
                 }
-                catch (Exception ex)
+                catch (Exception)
                 {
                     transaction.Rollback();
-                    System.Diagnostics.Debug.WriteLine("ERROR SQL: " + ex.Message);
+                    throw;
                 }
             }
             return resp;
         }
-
     }
 }

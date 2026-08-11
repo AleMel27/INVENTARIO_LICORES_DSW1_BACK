@@ -4,10 +4,10 @@ namespace GESTION_INVENTARIO_LICORES.Interfaces
 {
     public interface ICategoriaService
     {
-        List<Categoria> list();
-        Categoria getCategoria(long idCategoria);
-        bool insert(Categoria categoria);
-        bool update(Categoria categoria);
-        bool delete(long idCategoria);
+        List<Categoria> List();
+        Categoria GetCategoria(long idCategoria);
+        bool Insert(Categoria categoria);
+        bool Update(Categoria categoria);
+        bool Delete(long idCategoria);
     }
 }

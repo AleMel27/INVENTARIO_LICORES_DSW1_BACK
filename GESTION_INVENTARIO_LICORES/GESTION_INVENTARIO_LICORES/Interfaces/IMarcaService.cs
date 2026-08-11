@@ -4,10 +4,10 @@ namespace GESTION_INVENTARIO_LICORES.Interfaces
 {
     public interface IMarcaService
     {
-        List<Marca> list();
-        Marca getMarca(long idMarca);
-        bool insert(Marca marca);
-        bool update(Marca marca);
-        bool delete(long idMarca);
+        List<Marca> List();
+        Marca GetMarca(long idMarca);
+        bool Insert(Marca marca);
+        bool Update(Marca marca);
+        bool Delete(long idMarca);
     }
 }

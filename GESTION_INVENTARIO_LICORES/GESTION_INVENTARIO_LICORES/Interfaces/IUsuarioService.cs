@@ -4,10 +4,11 @@ namespace GESTION_INVENTARIO_LICORES.Interfaces
 {
     public interface IUsuarioService
     {
-        List<Usuario> list();
-        Usuario getUsuario(long idUsuario);
-        bool insert(Usuario usuario);
-        bool update(Usuario usuario);
-        bool delete(long idUsuario);
+        List<Usuario> List();
+        Usuario GetUsuario(long idUsuario);
+        bool Insert(Usuario usuario);
+        bool Update(Usuario usuario);
+        bool Delete(long idUsuario);
+        bool ChangePassword(long idUsuario, string nuevoPasswordHash); // <- Nuevo método
     }
 }

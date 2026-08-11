@@ -3,11 +3,11 @@
 namespace GESTION_INVENTARIO_LICORES.Interfaces
 {
     public interface IProveedorService
-    {
-        List<Proveedor> list();
-        Proveedor getProveedor(long idProveedor);
-        bool insert(Proveedor proveedor);
-        bool update(Proveedor proveedor);
-        bool delete(long idProveedor);
+    {   
+        List<Proveedor> List();
+        Proveedor GetProveedor(long idProveedor);
+        bool Insert(Proveedor proveedor);
+        bool Update(Proveedor proveedor);
+        bool Delete(long idProveedor);
     }
 }

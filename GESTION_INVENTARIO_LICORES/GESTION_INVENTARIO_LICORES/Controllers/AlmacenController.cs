@@ -1,4 +1,5 @@
 ﻿using Microsoft.AspNetCore.Mvc;
+using Microsoft.Data.SqlClient;
 using GESTION_INVENTARIO_LICORES.Interfaces;
 using GESTION_INVENTARIO_LICORES.Models;
 
@@ -8,127 +9,164 @@ namespace GESTION_INVENTARIO_LICORES.Controllers
     [ApiController]
     public class AlmacenController : ControllerBase
     {
-        private readonly IAlmacenService _almacenService;
+        private readonly IAlmacenService _service;
 
-        public AlmacenController(IAlmacenService almacenService)
+        public AlmacenController(IAlmacenService service)
         {
-            _almacenService = almacenService;
+            _service = service;
         }
 
-        // 1. GET: api/Almacen (Listar todos los almacenes)
         [HttpGet]
-        public IActionResult Get()
+        public async Task<IActionResult> Get()
         {
-            try
+            var lista = _service.List();
+            if (lista.Count > 0)
             {
-                var lista = _almacenService.list();
-                return Ok(new { success = true, message = "Almacenes obtenidos correctamente.", data = lista });
-            }
-            catch (Exception ex)
-            {
-                return StatusCode(500, new { success = false, message = "Error interno del servidor.", error = ex.Message });
-            }
-        }
-
-        // 2. GET: api/Almacen/5 (Obtener un almacén por ID)
-        [HttpGet("{id}")]
-        public IActionResult GetById(long id)
-        {
-            try
-            {
-                var almacen = _almacenService.getAlmacen(id);
-                if (almacen == null)
+                return Ok(new Response<List<Almacen>>
                 {
-                    return NotFound(new { success = false, message = $"No se encontró el almacén con ID {id}." });
-                }
-                return Ok(new { success = true, message = "Almacén encontrado.", data = almacen });
+                    Success = true,
+                    Message = "Almacenes obtenidos con éxito.",
+                    Data = lista
+                });
             }
-            catch (Exception ex)
+            return BadRequest(new Response<object>
             {
-                return StatusCode(500, new { success = false, message = "Error interno del servidor.", error = ex.Message });
-            }
+                Success = false,
+                Message = "No se encontraron almacenes registrados."
+            });
         }
 
-        // 3. POST: api/Almacen (Crear un nuevo almacén)
+        [HttpGet("{idAlmacen}")]
+        public async Task<IActionResult> GetById(long idAlmacen)
+        {
+            var almacen = _service.GetAlmacen(idAlmacen);
+            if (almacen == null)
+            {
+                return NotFound(new Response<object>
+                {
+                    Success = false,
+                    Message = "El almacén solicitado no existe."
+                });
+            }
+            return Ok(new Response<Almacen>
+            {
+                Success = true,
+                Message = "Almacén encontrado.",
+                Data = almacen
+            });
+        }
+
         [HttpPost]
-        public IActionResult Post([FromBody] Almacen almacen)
+        public async Task<IActionResult> Post([FromBody] Almacen almacen)
         {
             try
             {
-                if (almacen == null) return BadRequest(new { success = false, message = "Los datos enviados son incorrectos." });
-
-                // Al registrar, el ID lo genera la BD (se envía 0)
-                almacen.IdAlmacen = 0;
-
-                bool insertado = _almacenService.insert(almacen);
-                if (insertado)
+                var resp = _service.Insert(almacen);
+                if (resp)
                 {
-                    return CreatedAtAction(nameof(GetById), new { id = almacen.IdAlmacen }, new { success = true, message = "Almacén registrado exitosamente." });
+                    return Created("", new Response<Almacen>
+                    {
+                        Success = true,
+                        Message = "Almacén registrado correctamente.",
+                        Data = almacen
+                    });
                 }
-
-                return BadRequest(new { success = false, message = "No se pudo registrar el almacén." });
+                return BadRequest(new Response<object>
+                {
+                    Success = false,
+                    Message = "Hubo un error al registrar el almacén."
+                });
             }
-            catch (Exception ex)
+            catch (SqlException ex)
             {
-                return StatusCode(500, new { success = false, message = "Error interno del servidor.", error = ex.Message });
+                return BadRequest(new Response<object>
+                {
+                    Success = false,
+                    Message = ex.Message
+                });
             }
         }
 
-        // 4. PUT: api/Almacen/5 (Actualizar un almacén existente)
-        [HttpPut("{id}")]
-        public IActionResult Put(long id, [FromBody] Almacen almacen)
+        [HttpPut]
+        public async Task<IActionResult> Put([FromBody] Almacen almacen)
         {
+            var existe = _service.GetAlmacen(almacen.IdAlmacen);
+            if (existe == null)
+            {
+                return NotFound(new Response<object>
+                {
+                    Success = false,
+                    Message = "No se encontró el almacén para actualizar."
+                });
+            }
+
             try
             {
-                if (almacen == null || id != almacen.IdAlmacen)
+                var resp = _service.Update(almacen);
+                if (resp)
                 {
-                    return BadRequest(new { success = false, message = "El ID de la URL no coincide con el ID del cuerpo de la solicitud." });
+                    return Ok(new Response<Almacen>
+                    {
+                        Success = true,
+                        Message = "Se actualizó el almacén correctamente.",
+                        Data = almacen
+                    });
                 }
-
-                // Verificar si existe antes de actualizar
-                var existeAlmacen = _almacenService.getAlmacen(id);
-                if (existeAlmacen == null)
+                return BadRequest(new Response<object>
                 {
-                    return NotFound(new { success = false, message = $"No existe el almacén con ID {id} para actualizar." });
-                }
-
-                bool actualizado = _almacenService.update(almacen);
-                if (actualizado)
-                {
-                    return Ok(new { success = true, message = "Almacén actualizado correctamente." });
-                }
-
-                return BadRequest(new { success = false, message = "No se pudieron guardar los cambios del almacén." });
+                    Success = false,
+                    Message = "Hubo un error al actualizar el almacén."
+                });
             }
-            catch (Exception ex)
+            catch (SqlException ex)
             {
-                return StatusCode(500, new { success = false, message = "Error interno del servidor.", error = ex.Message });
+                return BadRequest(new Response<object>
+                {
+                    Success = false,
+                    Message = ex.Message
+                });
             }
         }
 
-        // 5. DELETE: api/Almacen/5 (Eliminar de forma lógica o física un almacén)
-        [HttpDelete("{id}")]
-        public IActionResult Delete(long id)
+        [HttpDelete("{idAlmacen}")]
+        public async Task<IActionResult> Delete(long idAlmacen)
         {
+            var almacen = _service.GetAlmacen(idAlmacen);
+            if (almacen == null)
+            {
+                return NotFound(new Response<object>
+                {
+                    Success = false,
+                    Message = "No se encontró el almacén para dar de baja."
+                });
+            }
+
             try
             {
-                var existeAlmacen = _almacenService.getAlmacen(id);
-                if (existeAlmacen == null)
+                var resp = _service.Delete(idAlmacen);
+                if (resp)
                 {
-                    return NotFound(new { success = false, message = $"No se encontró el almacén con ID {id}." });
+                    almacen.Estado = false;
+                    return Ok(new Response<Almacen>
+                    {
+                        Success = true,
+                        Message = "Se dio de baja el almacén correctamente.",
+                        Data = almacen
+                    });
                 }
-
-                bool eliminado = _almacenService.delete(id);
-                if (eliminado)
+                return BadRequest(new Response<object>
                 {
-                    return Ok(new { success = true, message = $"Almacén con ID {id} eliminado exitosamente." });
-                }
-
-                return BadRequest(new { success = false, message = "No se pudo eliminar el almacén." });
+                    Success = false,
+                    Message = "Hubo un error al dar de baja el almacén."
+                });
             }
-            catch (Exception ex)
+            catch (SqlException ex)
             {
-                return StatusCode(500, new { success = false, message = "Error interno del servidor.", error = ex.Message });
+                return BadRequest(new Response<object>
+                {
+                    Success = false,
+                    Message = ex.Message
+                });
             }
         }
     }

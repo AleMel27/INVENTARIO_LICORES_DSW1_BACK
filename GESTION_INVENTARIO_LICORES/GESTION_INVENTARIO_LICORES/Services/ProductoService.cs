@@ -1,27 +1,26 @@
-﻿using GESTION_INVENTARIO_LICORES.Interfaces;
-using GESTION_INVENTARIO_LICORES.Models;
-using Microsoft.Data.SqlClient;
+﻿using Microsoft.Data.SqlClient;
 using System.Data;
+using GESTION_INVENTARIO_LICORES.Interfaces;
+using GESTION_INVENTARIO_LICORES.Models;
 
 namespace GESTION_INVENTARIO_LICORES.Services
 {
     public class ProductoService : IProductoService
     {
-
-        private readonly string? conexion;
+        private readonly string? _conexion;
 
         public ProductoService(IConfiguration configuration)
         {
-            conexion = configuration.GetConnectionString("conexion");
+            _conexion = configuration.GetConnectionString("conexion");
         }
 
-        public List<Producto> list()
+        public List<Producto> List()
         {
-            List<Producto> temporal = new List<Producto>();
+            List<Producto> lista = new List<Producto>();
 
-            using (SqlConnection con = new SqlConnection(conexion))
+            using (SqlConnection con = new SqlConnection(_conexion))
             {
-                using (SqlCommand command = new SqlCommand("sp_list_productos", con))
+                using (SqlCommand command = new SqlCommand("sp_listar_productos", con))
                 {
                     command.CommandType = CommandType.StoredProcedure;
                     con.Open();
@@ -29,37 +28,48 @@ namespace GESTION_INVENTARIO_LICORES.Services
                     {
                         while (reader.Read())
                         {
-                            Producto producto = new Producto
+                            lista.Add(new Producto
                             {
-                                IdProducto = reader.GetInt64(0),
-                                IdCategoria = reader.GetInt64(1),
-                                IdMarca = reader.GetInt64(2),
-                                Codigo = reader.GetString(3),
-                                Nombre = reader.GetString(4),
-                                Descripcion = reader.IsDBNull(5) ? null : reader.GetString(5),
-                                CapacidadMl = reader.GetInt32(6),
-                                GradoAlcoholico = reader.GetDecimal(7),
-                                PrecioVenta = reader.GetDecimal(8),
-                                StockMinimo = reader.GetInt32(9),
-                                Estado = reader.GetBoolean(10),
-                                FechaCreacion = reader.GetDateTime(11),
-                                FechaActualizacion = reader.GetDateTime(12)
-                            };
-                            temporal.Add(producto);
+                                IdProducto = reader.GetInt64(reader.GetOrdinal("IdProducto")),
+                                Codigo = reader.GetString(reader.GetOrdinal("Codigo")),
+                                Nombre = reader.GetString(reader.GetOrdinal("Producto")), // Mapea 'Producto' según tu alias SQL
+                                Descripcion = reader.IsDBNull(reader.GetOrdinal("Descripcion")) ? null : reader.GetString(reader.GetOrdinal("Descripcion")),
+                                CapacidadMl = reader.GetInt32(reader.GetOrdinal("CapacidadMl")),
+                                GradoAlcoholico = reader.GetDecimal(reader.GetOrdinal("GradoAlcoholico")),
+                                PrecioVenta = reader.GetDecimal(reader.GetOrdinal("PrecioVenta")),
+                                StockMinimo = reader.GetInt32(reader.GetOrdinal("StockMinimo")),
+                                IdCategoria = reader.GetInt64(reader.GetOrdinal("IdCategoria")),
+                                IdMarca = reader.GetInt64(reader.GetOrdinal("IdMarca")),
+                                Estado = reader.GetBoolean(reader.GetOrdinal("Estado")),
+                                FechaCreacion = reader.GetDateTime(reader.GetOrdinal("FechaCreacion")),
+                                FechaActualizacion = reader.GetDateTime(reader.GetOrdinal("FechaActualizacion")),
+
+                                // Inicializamos las propiedades de navegación que expone el JOIN
+                                Categoria = new Categoria
+                                {
+                                    IdCategoria = reader.GetInt64(reader.GetOrdinal("IdCategoria")),
+                                    Nombre = reader.GetString(reader.GetOrdinal("Categoria"))
+                                },
+                                Marca = new Marca
+                                {
+                                    IdMarca = reader.GetInt64(reader.GetOrdinal("IdMarca")),
+                                    Nombre = reader.GetString(reader.GetOrdinal("Marca"))
+                                }
+                            });
                         }
                     }
                 }
             }
-            return temporal;
+            return lista;
         }
 
-        public Producto getProducto(long idProducto)
+        public Producto GetProducto(long idProducto)
         {
-            Producto? producto = null;
+            Producto producto = null;
 
-            using (SqlConnection con = new SqlConnection(conexion))
+            using (SqlConnection con = new SqlConnection(_conexion))
             {
-                using (SqlCommand command = new SqlCommand("sp_find_producto_by_id", con))
+                using (SqlCommand command = new SqlCommand("sp_buscar_producto", con))
                 {
                     command.CommandType = CommandType.StoredProcedure;
                     command.Parameters.AddWithValue("@IdProducto", idProducto);
@@ -70,19 +80,19 @@ namespace GESTION_INVENTARIO_LICORES.Services
                         {
                             producto = new Producto
                             {
-                                IdProducto = reader.GetInt64(0),
-                                IdCategoria = reader.GetInt64(1),
-                                IdMarca = reader.GetInt64(2),
-                                Codigo = reader.GetString(3),
-                                Nombre = reader.GetString(4),
-                                Descripcion = reader.IsDBNull(5) ? null : reader.GetString(5),
-                                CapacidadMl = reader.GetInt32(6),
-                                GradoAlcoholico = reader.GetDecimal(7),
-                                PrecioVenta = reader.GetDecimal(8),
-                                StockMinimo = reader.GetInt32(9),
-                                Estado = reader.GetBoolean(10),
-                                FechaCreacion = reader.GetDateTime(11),
-                                FechaActualizacion = reader.GetDateTime(12)
+                                IdProducto = reader.GetInt64(reader.GetOrdinal("IdProducto")),
+                                IdCategoria = reader.GetInt64(reader.GetOrdinal("IdCategoria")),
+                                IdMarca = reader.GetInt64(reader.GetOrdinal("IdMarca")),
+                                Codigo = reader.GetString(reader.GetOrdinal("Codigo")),
+                                Nombre = reader.GetString(reader.GetOrdinal("Nombre")), // Aquí se llama 'Nombre' en tu SP de búsqueda
+                                Descripcion = reader.IsDBNull(reader.GetOrdinal("Descripcion")) ? null : reader.GetString(reader.GetOrdinal("Descripcion")),
+                                CapacidadMl = reader.GetInt32(reader.GetOrdinal("CapacidadMl")),
+                                GradoAlcoholico = reader.GetDecimal(reader.GetOrdinal("GradoAlcoholico")),
+                                PrecioVenta = reader.GetDecimal(reader.GetOrdinal("PrecioVenta")),
+                                StockMinimo = reader.GetInt32(reader.GetOrdinal("StockMinimo")),
+                                Estado = reader.GetBoolean(reader.GetOrdinal("Estado")),
+                                FechaCreacion = reader.GetDateTime(reader.GetOrdinal("FechaCreacion")),
+                                FechaActualizacion = reader.GetDateTime(reader.GetOrdinal("FechaActualizacion"))
                             };
                         }
                     }
@@ -91,10 +101,10 @@ namespace GESTION_INVENTARIO_LICORES.Services
             return producto;
         }
 
-        public bool insert(Producto producto)
+        public bool Insert(Producto producto)
         {
             bool resp = false;
-            using (SqlConnection con = new SqlConnection(conexion))
+            using (SqlConnection con = new SqlConnection(_conexion))
             {
                 con.Open();
                 SqlTransaction transaction = con.BeginTransaction();
@@ -108,29 +118,35 @@ namespace GESTION_INVENTARIO_LICORES.Services
                         command.Parameters.AddWithValue("@IdMarca", producto.IdMarca);
                         command.Parameters.AddWithValue("@Codigo", producto.Codigo);
                         command.Parameters.AddWithValue("@Nombre", producto.Nombre);
-                        command.Parameters.AddWithValue("@Descripcion", (object?)producto.Descripcion ?? DBNull.Value);
+                        command.Parameters.AddWithValue("@Descripcion", (object)producto.Descripcion ?? DBNull.Value);
                         command.Parameters.AddWithValue("@CapacidadMl", producto.CapacidadMl);
                         command.Parameters.AddWithValue("@GradoAlcoholico", producto.GradoAlcoholico);
                         command.Parameters.AddWithValue("@PrecioVenta", producto.PrecioVenta);
                         command.Parameters.AddWithValue("@StockMinimo", producto.StockMinimo);
 
-                        resp = command.ExecuteNonQuery() > 0;
+                        var id = command.ExecuteScalar();
+                        if (id != null)
+                        {
+                            producto.IdProducto = Convert.ToInt64(id);
+                            resp = true;
+                        }
+
                         transaction.Commit();
                     }
                 }
-                catch (Exception ex)
+                catch (Exception)
                 {
                     transaction.Rollback();
-                    System.Diagnostics.Debug.WriteLine("ERROR SQL: " + ex.Message);
+                    throw;
                 }
             }
             return resp;
         }
 
-        public bool update(Producto producto)
+        public bool Update(Producto producto)
         {
             bool resp = false;
-            using (SqlConnection con = new SqlConnection(conexion))
+            using (SqlConnection con = new SqlConnection(_conexion))
             {
                 con.Open();
                 SqlTransaction transaction = con.BeginTransaction();
@@ -145,7 +161,7 @@ namespace GESTION_INVENTARIO_LICORES.Services
                         command.Parameters.AddWithValue("@IdMarca", producto.IdMarca);
                         command.Parameters.AddWithValue("@Codigo", producto.Codigo);
                         command.Parameters.AddWithValue("@Nombre", producto.Nombre);
-                        command.Parameters.AddWithValue("@Descripcion", (object?)producto.Descripcion ?? DBNull.Value);
+                        command.Parameters.AddWithValue("@Descripcion", (object)producto.Descripcion ?? DBNull.Value);
                         command.Parameters.AddWithValue("@CapacidadMl", producto.CapacidadMl);
                         command.Parameters.AddWithValue("@GradoAlcoholico", producto.GradoAlcoholico);
                         command.Parameters.AddWithValue("@PrecioVenta", producto.PrecioVenta);
@@ -156,19 +172,19 @@ namespace GESTION_INVENTARIO_LICORES.Services
                         transaction.Commit();
                     }
                 }
-                catch (Exception ex)
+                catch (Exception)
                 {
                     transaction.Rollback();
-                    System.Diagnostics.Debug.WriteLine("ERROR SQL: " + ex.Message);
+                    throw;
                 }
             }
             return resp;
         }
 
-        public bool delete(long idProducto)
+        public bool Delete(long idProducto)
         {
             bool resp = false;
-            using (SqlConnection con = new SqlConnection(conexion))
+            using (SqlConnection con = new SqlConnection(_conexion))
             {
                 con.Open();
                 SqlTransaction transaction = con.BeginTransaction();
@@ -184,10 +200,10 @@ namespace GESTION_INVENTARIO_LICORES.Services
                         transaction.Commit();
                     }
                 }
-                catch (Exception ex)
+                catch (Exception)
                 {
                     transaction.Rollback();
-                    System.Diagnostics.Debug.WriteLine("ERROR SQL: " + ex.Message);
+                    throw;
                 }
             }
             return resp;
