@@ -14,7 +14,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("GESTION_INVENTARIO_LICORES")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+8538aa862958a0187c25c4a2a52939bbb9ae1716")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+8dd7f5584f06aed100f0b71eaf09bad33392a210")]
 [assembly: System.Reflection.AssemblyProductAttribute("GESTION_INVENTARIO_LICORES")]
 [assembly: System.Reflection.AssemblyTitleAttribute("GESTION_INVENTARIO_LICORES")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]
