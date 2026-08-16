@@ -1,5 +1,6 @@
 ﻿using GESTION_INVENTARIO_LICORES.DTOs.Request;
 using GESTION_INVENTARIO_LICORES.DTOs.Response;
+using GESTION_INVENTARIO_LICORES.Exceptions;
 using GESTION_INVENTARIO_LICORES.Interfaces;
 using Microsoft.Data.SqlClient;
 using System.Data;
@@ -127,35 +128,109 @@ namespace GESTION_INVENTARIO_LICORES.Services
             UsuarioReqDto request
         )
         {
-            string passwordHash =
-                BCrypt.Net.BCrypt.HashPassword(
-                    request.Password
-                );
+            long idUsuario;
 
             using (SqlConnection con = new SqlConnection(conexion))
             {
-                using (SqlCommand command = new SqlCommand("sp_Usuario_Crear", con))
+                await con.OpenAsync();
+
+                if (await ExisteCorreoAsync(con, request.Correo))
                 {
-                    command.CommandType = CommandType.StoredProcedure;
-                    command.Parameters.AddWithValue("@IdRol", request.IdRol);
-                    command.Parameters.AddWithValue("@Nombres", request.Nombres);
-                    command.Parameters.AddWithValue("@Apellidos", request.Apellidos);
-                    command.Parameters.AddWithValue("@Correo", request.Correo);
-                    command.Parameters.AddWithValue("@PasswordHash", passwordHash);
-
-                    await con.OpenAsync();
-
-                    object? resultado = await command.ExecuteScalarAsync();
-
-                    if (resultado is null || resultado == DBNull.Value)
-                    {
-                        return null;
-                    }
-
-                    long idUsuario = Convert.ToInt64(resultado);
-
-                    return await GetByIdAsync(idUsuario);
+                    throw new ConflictException(
+                        "Ya existe un usuario registrado con ese correo."
+                    );
                 }
+
+                if (!await ExisteRolActivoAsync(con, request.IdRol))
+                {
+                    throw new BusinessValidationException(
+                        "El rol indicado no es válido o se encuentra inactivo."
+                    );
+                }
+
+                string passwordHash =
+                    BCrypt.Net.BCrypt.HashPassword(
+                        request.Password
+                    );
+
+                using (SqlTransaction transaction =
+                    (SqlTransaction)await con.BeginTransactionAsync())
+                {
+                    try
+                    {
+                        using (SqlCommand command =
+                            new SqlCommand(
+                                "sp_Usuario_Crear",
+                                con,
+                                transaction
+                            ))
+                        {
+                            command.CommandType = CommandType.StoredProcedure;
+                            command.Parameters.AddWithValue("@IdRol", request.IdRol);
+                            command.Parameters.AddWithValue("@Nombres", request.Nombres);
+                            command.Parameters.AddWithValue("@Apellidos", request.Apellidos);
+                            command.Parameters.AddWithValue("@Correo", request.Correo);
+                            command.Parameters.AddWithValue("@PasswordHash", passwordHash);
+
+                            object? resultado = await command.ExecuteScalarAsync();
+
+                            if (resultado is null || resultado == DBNull.Value)
+                            {
+                                await transaction.RollbackAsync();
+                                return null;
+                            }
+
+                            idUsuario = Convert.ToInt64(resultado);
+                        }
+
+                        await transaction.CommitAsync();
+                    }
+                    catch
+                    {
+                        await transaction.RollbackAsync();
+                        throw;
+                    }
+                }
+            }
+
+            return await GetByIdAsync(idUsuario);
+        }
+
+        private async Task<bool> ExisteCorreoAsync(
+            SqlConnection con,
+            string correo
+        )
+        {
+            using (SqlCommand command =
+                new SqlCommand("sp_Usuario_ExisteCorreo", con))
+            {
+                command.CommandType = CommandType.StoredProcedure;
+                command.Parameters.AddWithValue("@Correo", correo);
+
+                object? resultado = await command.ExecuteScalarAsync();
+
+                return resultado is not null &&
+                    resultado != DBNull.Value &&
+                    Convert.ToBoolean(resultado);
+            }
+        }
+
+        private async Task<bool> ExisteRolActivoAsync(
+            SqlConnection con,
+            long idRol
+        )
+        {
+            using (SqlCommand command =
+                new SqlCommand("sp_Rol_ExistePorIdActivo", con))
+            {
+                command.CommandType = CommandType.StoredProcedure;
+                command.Parameters.AddWithValue("@IdRol", idRol);
+
+                object? resultado = await command.ExecuteScalarAsync();
+
+                return resultado is not null &&
+                    resultado != DBNull.Value &&
+                    Convert.ToBoolean(resultado);
             }
         }
 

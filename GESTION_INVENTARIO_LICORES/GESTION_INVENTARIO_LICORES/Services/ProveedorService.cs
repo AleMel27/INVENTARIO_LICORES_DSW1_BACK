@@ -1,5 +1,6 @@
 using GESTION_INVENTARIO_LICORES.DTOs.Request;
 using GESTION_INVENTARIO_LICORES.DTOs.Response;
+using GESTION_INVENTARIO_LICORES.Exceptions;
 using GESTION_INVENTARIO_LICORES.Interfaces;
 using Microsoft.Data.SqlClient;
 using System.Data;
@@ -111,30 +112,105 @@ namespace GESTION_INVENTARIO_LICORES.Services
             ProveedorReqDto request
         )
         {
+            long idProveedor;
+
             using (SqlConnection con = new SqlConnection(conexion))
             {
-                using (SqlCommand command = new SqlCommand("sp_Proveedor_Crear", con))
+                await con.OpenAsync();
+
+                if (await ExisteRucAsync(con, request.Ruc))
                 {
-                    command.CommandType = CommandType.StoredProcedure;
-                    command.Parameters.AddWithValue("@Ruc", request.Ruc);
-                    command.Parameters.AddWithValue("@RazonSocial", request.RazonSocial);
-                    command.Parameters.AddWithValue("@Telefono", (object?)request.Telefono ?? DBNull.Value);
-                    command.Parameters.AddWithValue("@Correo", (object?)request.Correo ?? DBNull.Value);
-                    command.Parameters.AddWithValue("@Direccion", (object?)request.Direccion ?? DBNull.Value);
-
-                    await con.OpenAsync();
-
-                    object? resultado = await command.ExecuteScalarAsync();
-
-                    if (resultado is null || resultado == DBNull.Value)
-                    {
-                        return null;
-                    }
-
-                    long idProveedor = Convert.ToInt64(resultado);
-
-                    return await GetByIdAsync(idProveedor);
+                    throw new ConflictException(
+                        "Ya existe un proveedor con ese RUC."
+                    );
                 }
+
+                if (!string.IsNullOrWhiteSpace(request.Correo) &&
+                    await ExisteCorreoAsync(con, request.Correo))
+                {
+                    throw new ConflictException(
+                        "Ya existe un proveedor con ese correo."
+                    );
+                }
+
+                using (SqlTransaction transaction =
+                    (SqlTransaction)await con.BeginTransactionAsync())
+                {
+                    try
+                    {
+                        using (SqlCommand command =
+                            new SqlCommand(
+                                "sp_Proveedor_Crear",
+                                con,
+                                transaction
+                            ))
+                        {
+                            command.CommandType = CommandType.StoredProcedure;
+                            command.Parameters.AddWithValue("@Ruc", request.Ruc);
+                            command.Parameters.AddWithValue("@RazonSocial", request.RazonSocial);
+                            command.Parameters.AddWithValue("@Telefono", (object?)request.Telefono ?? DBNull.Value);
+                            command.Parameters.AddWithValue("@Correo", (object?)request.Correo ?? DBNull.Value);
+                            command.Parameters.AddWithValue("@Direccion", (object?)request.Direccion ?? DBNull.Value);
+
+                            object? resultado = await command.ExecuteScalarAsync();
+
+                            if (resultado is null || resultado == DBNull.Value)
+                            {
+                                await transaction.RollbackAsync();
+                                return null;
+                            }
+
+                            idProveedor = Convert.ToInt64(resultado);
+                        }
+
+                        await transaction.CommitAsync();
+                    }
+                    catch
+                    {
+                        await transaction.RollbackAsync();
+                        throw;
+                    }
+                }
+            }
+
+            return await GetByIdAsync(idProveedor);
+        }
+
+        private async Task<bool> ExisteRucAsync(
+            SqlConnection con,
+            string ruc
+        )
+        {
+            using (SqlCommand command =
+                new SqlCommand("sp_Proveedor_ExisteRuc", con))
+            {
+                command.CommandType = CommandType.StoredProcedure;
+                command.Parameters.AddWithValue("@Ruc", ruc);
+
+                object? resultado = await command.ExecuteScalarAsync();
+
+                return resultado is not null &&
+                    resultado != DBNull.Value &&
+                    Convert.ToBoolean(resultado);
+            }
+        }
+
+        private async Task<bool> ExisteCorreoAsync(
+            SqlConnection con,
+            string correo
+        )
+        {
+            using (SqlCommand command =
+                new SqlCommand("sp_Proveedor_ExisteCorreo", con))
+            {
+                command.CommandType = CommandType.StoredProcedure;
+                command.Parameters.AddWithValue("@Correo", correo);
+
+                object? resultado = await command.ExecuteScalarAsync();
+
+                return resultado is not null &&
+                    resultado != DBNull.Value &&
+                    Convert.ToBoolean(resultado);
             }
         }
 

@@ -1,7 +1,9 @@
 using GESTION_INVENTARIO_LICORES.DTOs.Request;
 using GESTION_INVENTARIO_LICORES.DTOs.Response;
 using GESTION_INVENTARIO_LICORES.Enums;
+using GESTION_INVENTARIO_LICORES.Exceptions;
 using GESTION_INVENTARIO_LICORES.Interfaces;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Data.SqlClient;
 
@@ -21,6 +23,7 @@ namespace GESTION_INVENTARIO_LICORES.Controllers
         }
 
         [HttpGet]
+        [Authorize(Roles = "ADMIN,ALMACENERO")]
         public async Task<IActionResult> Get(
             int pageNumber = 1,
             string? nombre = null,
@@ -103,6 +106,7 @@ namespace GESTION_INVENTARIO_LICORES.Controllers
         }
 
         [HttpGet("{idAlmacen}")]
+        [Authorize(Roles = "ADMIN,ALMACENERO")]
         public async Task<IActionResult> GetById(
             long idAlmacen
         )
@@ -165,6 +169,7 @@ namespace GESTION_INVENTARIO_LICORES.Controllers
         }
 
         [HttpPost]
+        [Authorize(Roles = "ADMIN")]
         public async Task<IActionResult> Post(
             [FromBody] AlmacenReqDto request
         )
@@ -208,6 +213,28 @@ namespace GESTION_INVENTARIO_LICORES.Controllers
                     }
                 );
             }
+            catch (ConflictException ex)
+            {
+                return Conflict(
+                    new ProblemDetails
+                    {
+                        Status = StatusCodes.Status409Conflict,
+                        Title = "Conflicto",
+                        Detail = ex.Message
+                    }
+                );
+            }
+            catch (BusinessValidationException ex)
+            {
+                return BadRequest(
+                    new ProblemDetails
+                    {
+                        Status = StatusCodes.Status400BadRequest,
+                        Title = "Solicitud inválida",
+                        Detail = ex.Message
+                    }
+                );
+            }
             catch (SqlException)
             {
                 return StatusCode(
@@ -235,6 +262,7 @@ namespace GESTION_INVENTARIO_LICORES.Controllers
         }
 
         [HttpPut("{idAlmacen}")]
+        [Authorize(Roles = "ADMIN")]
         public async Task<IActionResult> Put(
             long idAlmacen,
             [FromBody] AlmacenUpdateReqDto request
@@ -329,6 +357,7 @@ namespace GESTION_INVENTARIO_LICORES.Controllers
         }
 
         [HttpPatch("{idAlmacen}/estado")]
+        [Authorize(Roles = "ADMIN")]
         public async Task<IActionResult> ChangeStatus(
             long idAlmacen,
             [FromQuery] bool estado

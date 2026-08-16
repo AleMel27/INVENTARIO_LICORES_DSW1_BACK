@@ -1,5 +1,6 @@
 using GESTION_INVENTARIO_LICORES.DTOs.Response;
 using GESTION_INVENTARIO_LICORES.Interfaces;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Data.SqlClient;
 
@@ -7,6 +8,7 @@ namespace GESTION_INVENTARIO_LICORES.Controllers
 {
     [Route("api/[controller]")]
     [ApiController]
+    [Authorize(Roles = "ADMIN")]
     public class RolController : ControllerBase
     {
         private readonly IRolService _service;

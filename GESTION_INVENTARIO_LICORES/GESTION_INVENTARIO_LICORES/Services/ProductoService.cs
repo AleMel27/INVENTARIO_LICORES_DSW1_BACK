@@ -1,5 +1,6 @@
 using GESTION_INVENTARIO_LICORES.DTOs.Request;
 using GESTION_INVENTARIO_LICORES.DTOs.Response;
+using GESTION_INVENTARIO_LICORES.Exceptions;
 using GESTION_INVENTARIO_LICORES.Interfaces;
 using Microsoft.Data.SqlClient;
 using System.Data;
@@ -149,34 +150,134 @@ namespace GESTION_INVENTARIO_LICORES.Services
             ProductoReqDto request
         )
         {
+            long idProducto;
+
             using (SqlConnection con = new SqlConnection(conexion))
             {
-                using (SqlCommand command = new SqlCommand("sp_Producto_Crear", con))
+                await con.OpenAsync();
+
+                if (await ExisteCodigoAsync(con, request.Codigo))
                 {
-                    command.CommandType = CommandType.StoredProcedure;
-                    command.Parameters.AddWithValue("@IdCategoria", request.IdCategoria);
-                    command.Parameters.AddWithValue("@IdMarca", request.IdMarca);
-                    command.Parameters.AddWithValue("@Codigo", request.Codigo);
-                    command.Parameters.AddWithValue("@Nombre", request.Nombre);
-                    command.Parameters.AddWithValue("@Descripcion", (object?)request.Descripcion ?? DBNull.Value);
-                    command.Parameters.AddWithValue("@CapacidadMl", request.CapacidadMl);
-                    command.Parameters.AddWithValue("@GradoAlcoholico", request.GradoAlcoholico);
-                    command.Parameters.AddWithValue("@PrecioVenta", request.PrecioVenta);
-                    command.Parameters.AddWithValue("@StockMinimo", request.StockMinimo);
-
-                    await con.OpenAsync();
-
-                    object? resultado = await command.ExecuteScalarAsync();
-
-                    if (resultado is null || resultado == DBNull.Value)
-                    {
-                        return null;
-                    }
-
-                    long idProducto = Convert.ToInt64(resultado);
-
-                    return await GetByIdAsync(idProducto);
+                    throw new ConflictException(
+                        "Ya existe un producto registrado con ese código."
+                    );
                 }
+
+                if (!await ExisteCategoriaActivaAsync(con, request.IdCategoria))
+                {
+                    throw new BusinessValidationException(
+                        "La categoría indicada no es válida o se encuentra inactiva."
+                    );
+                }
+
+                if (!await ExisteMarcaActivaAsync(con, request.IdMarca))
+                {
+                    throw new BusinessValidationException(
+                        "La marca indicada no es válida o se encuentra inactiva."
+                    );
+                }
+
+                using (SqlTransaction transaction =
+                    (SqlTransaction)await con.BeginTransactionAsync())
+                {
+                    try
+                    {
+                        using (SqlCommand command =
+                            new SqlCommand(
+                                "sp_Producto_Crear",
+                                con,
+                                transaction
+                            ))
+                        {
+                            command.CommandType = CommandType.StoredProcedure;
+                            command.Parameters.AddWithValue("@IdCategoria", request.IdCategoria);
+                            command.Parameters.AddWithValue("@IdMarca", request.IdMarca);
+                            command.Parameters.AddWithValue("@Codigo", request.Codigo);
+                            command.Parameters.AddWithValue("@Nombre", request.Nombre);
+                            command.Parameters.AddWithValue("@Descripcion", (object?)request.Descripcion ?? DBNull.Value);
+                            command.Parameters.AddWithValue("@CapacidadMl", request.CapacidadMl);
+                            command.Parameters.AddWithValue("@GradoAlcoholico", request.GradoAlcoholico);
+                            command.Parameters.AddWithValue("@PrecioVenta", request.PrecioVenta);
+                            command.Parameters.AddWithValue("@StockMinimo", request.StockMinimo);
+
+                            object? resultado = await command.ExecuteScalarAsync();
+
+                            if (resultado is null || resultado == DBNull.Value)
+                            {
+                                await transaction.RollbackAsync();
+                                return null;
+                            }
+
+                            idProducto = Convert.ToInt64(resultado);
+                        }
+
+                        await transaction.CommitAsync();
+                    }
+                    catch
+                    {
+                        await transaction.RollbackAsync();
+                        throw;
+                    }
+                }
+            }
+
+            return await GetByIdAsync(idProducto);
+        }
+
+        private async Task<bool> ExisteCodigoAsync(
+            SqlConnection con,
+            string codigo
+        )
+        {
+            using (SqlCommand command =
+                new SqlCommand("sp_Producto_ExisteCodigo", con))
+            {
+                command.CommandType = CommandType.StoredProcedure;
+                command.Parameters.AddWithValue("@Codigo", codigo);
+
+                object? resultado = await command.ExecuteScalarAsync();
+
+                return resultado is not null &&
+                    resultado != DBNull.Value &&
+                    Convert.ToBoolean(resultado);
+            }
+        }
+
+        private async Task<bool> ExisteCategoriaActivaAsync(
+            SqlConnection con,
+            long idCategoria
+        )
+        {
+            using (SqlCommand command =
+                new SqlCommand("sp_Categoria_ExistePorIdActivo", con))
+            {
+                command.CommandType = CommandType.StoredProcedure;
+                command.Parameters.AddWithValue("@IdCategoria", idCategoria);
+
+                object? resultado = await command.ExecuteScalarAsync();
+
+                return resultado is not null &&
+                    resultado != DBNull.Value &&
+                    Convert.ToBoolean(resultado);
+            }
+        }
+
+        private async Task<bool> ExisteMarcaActivaAsync(
+            SqlConnection con,
+            long idMarca
+        )
+        {
+            using (SqlCommand command =
+                new SqlCommand("sp_Marca_ExistePorIdActivo", con))
+            {
+                command.CommandType = CommandType.StoredProcedure;
+                command.Parameters.AddWithValue("@IdMarca", idMarca);
+
+                object? resultado = await command.ExecuteScalarAsync();
+
+                return resultado is not null &&
+                    resultado != DBNull.Value &&
+                    Convert.ToBoolean(resultado);
             }
         }
 

@@ -1,6 +1,8 @@
 using GESTION_INVENTARIO_LICORES.DTOs.Request;
 using GESTION_INVENTARIO_LICORES.DTOs.Response;
+using GESTION_INVENTARIO_LICORES.Exceptions;
 using GESTION_INVENTARIO_LICORES.Interfaces;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Data.SqlClient;
 
@@ -20,6 +22,7 @@ namespace GESTION_INVENTARIO_LICORES.Controllers
         }
 
         [HttpGet]
+        [Authorize(Roles = "ADMIN,ALMACENERO")]
         public async Task<IActionResult> Get(
             int pageNumber = 1,
             string? estado = null,
@@ -117,6 +120,7 @@ namespace GESTION_INVENTARIO_LICORES.Controllers
         }
 
         [HttpGet("{idCompra}")]
+        [Authorize(Roles = "ADMIN,ALMACENERO")]
         public async Task<IActionResult> GetById(
             long idCompra
         )
@@ -179,6 +183,7 @@ namespace GESTION_INVENTARIO_LICORES.Controllers
         }
 
         [HttpPost]
+        [Authorize(Roles = "ADMIN,ALMACENERO")]
         public async Task<IActionResult> Post(
             [FromBody] CompraReqDto request
         )
@@ -222,6 +227,28 @@ namespace GESTION_INVENTARIO_LICORES.Controllers
                     }
                 );
             }
+            catch (ConflictException ex)
+            {
+                return Conflict(
+                    new ProblemDetails
+                    {
+                        Status = StatusCodes.Status409Conflict,
+                        Title = "Conflicto",
+                        Detail = ex.Message
+                    }
+                );
+            }
+            catch (BusinessValidationException ex)
+            {
+                return BadRequest(
+                    new ProblemDetails
+                    {
+                        Status = StatusCodes.Status400BadRequest,
+                        Title = "Solicitud inválida",
+                        Detail = ex.Message
+                    }
+                );
+            }
             catch (SqlException)
             {
                 return StatusCode(
@@ -249,6 +276,7 @@ namespace GESTION_INVENTARIO_LICORES.Controllers
         }
 
         [HttpPatch("{idCompra}/estado")]
+        [Authorize(Roles = "ADMIN,ALMACENERO")]
         public async Task<IActionResult> ChangeStatus(
             long idCompra,
             [FromBody] EstadoCompraReqDto request
@@ -324,6 +352,12 @@ namespace GESTION_INVENTARIO_LICORES.Controllers
                             Detail = "La compra ya se encuentra en un estado final y no puede modificarse."
                         }
                     );
+                }
+
+                if (nuevoEstado == "CANCELADA" &&
+                    !User.IsInRole("ADMIN"))
+                {
+                    return Forbid();
                 }
 
                 request.Estado = nuevoEstado;

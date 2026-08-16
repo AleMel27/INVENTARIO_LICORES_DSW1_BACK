@@ -1,5 +1,6 @@
 using GESTION_INVENTARIO_LICORES.DTOs.Request;
 using GESTION_INVENTARIO_LICORES.DTOs.Response;
+using GESTION_INVENTARIO_LICORES.Exceptions;
 using GESTION_INVENTARIO_LICORES.Interfaces;
 using Microsoft.Data.SqlClient;
 using System.Data;
@@ -135,27 +136,133 @@ namespace GESTION_INVENTARIO_LICORES.Services
             InventarioReqDto request
         )
         {
+            long idInventario;
+
             using (SqlConnection con = new SqlConnection(conexion))
             {
-                using (SqlCommand command = new SqlCommand("sp_Inventario_Crear", con))
+                await con.OpenAsync();
+
+                if (!await ExisteProductoActivoAsync(con, request.IdProducto))
                 {
-                    command.CommandType = CommandType.StoredProcedure;
-                    command.Parameters.AddWithValue("@IdProducto", request.IdProducto);
-                    command.Parameters.AddWithValue("@IdAlmacen", request.IdAlmacen);
-
-                    await con.OpenAsync();
-
-                    object? resultado = await command.ExecuteScalarAsync();
-
-                    if (resultado is null || resultado == DBNull.Value)
-                    {
-                        return null;
-                    }
-
-                    long idInventario = Convert.ToInt64(resultado);
-
-                    return await GetByIdAsync(idInventario);
+                    throw new BusinessValidationException(
+                        "El producto indicado no es válido o se encuentra inactivo."
+                    );
                 }
+
+                if (!await ExisteAlmacenActivoAsync(con, request.IdAlmacen))
+                {
+                    throw new BusinessValidationException(
+                        "El almacén indicado no es válido o se encuentra inactivo."
+                    );
+                }
+
+                if (await ExisteProductoAlmacenAsync(
+                    con,
+                    request.IdProducto,
+                    request.IdAlmacen
+                ))
+                {
+                    throw new ConflictException(
+                        "El producto ya tiene un inventario registrado en ese almacén."
+                    );
+                }
+
+                using (SqlTransaction transaction =
+                    (SqlTransaction)await con.BeginTransactionAsync())
+                {
+                    try
+                    {
+                        using (SqlCommand command =
+                            new SqlCommand(
+                                "sp_Inventario_Crear",
+                                con,
+                                transaction
+                            ))
+                        {
+                            command.CommandType = CommandType.StoredProcedure;
+                            command.Parameters.AddWithValue("@IdProducto", request.IdProducto);
+                            command.Parameters.AddWithValue("@IdAlmacen", request.IdAlmacen);
+
+                            object? resultado = await command.ExecuteScalarAsync();
+
+                            if (resultado is null || resultado == DBNull.Value)
+                            {
+                                await transaction.RollbackAsync();
+                                return null;
+                            }
+
+                            idInventario = Convert.ToInt64(resultado);
+                        }
+
+                        await transaction.CommitAsync();
+                    }
+                    catch
+                    {
+                        await transaction.RollbackAsync();
+                        throw;
+                    }
+                }
+            }
+
+            return await GetByIdAsync(idInventario);
+        }
+
+        private async Task<bool> ExisteProductoActivoAsync(
+            SqlConnection con,
+            long idProducto
+        )
+        {
+            using (SqlCommand command =
+                new SqlCommand("sp_Producto_ExistePorIdActivo", con))
+            {
+                command.CommandType = CommandType.StoredProcedure;
+                command.Parameters.AddWithValue("@IdProducto", idProducto);
+
+                object? resultado = await command.ExecuteScalarAsync();
+
+                return resultado is not null &&
+                    resultado != DBNull.Value &&
+                    Convert.ToBoolean(resultado);
+            }
+        }
+
+        private async Task<bool> ExisteAlmacenActivoAsync(
+            SqlConnection con,
+            long idAlmacen
+        )
+        {
+            using (SqlCommand command =
+                new SqlCommand("sp_Almacen_ExistePorIdActivo", con))
+            {
+                command.CommandType = CommandType.StoredProcedure;
+                command.Parameters.AddWithValue("@IdAlmacen", idAlmacen);
+
+                object? resultado = await command.ExecuteScalarAsync();
+
+                return resultado is not null &&
+                    resultado != DBNull.Value &&
+                    Convert.ToBoolean(resultado);
+            }
+        }
+
+        private async Task<bool> ExisteProductoAlmacenAsync(
+            SqlConnection con,
+            long idProducto,
+            long idAlmacen
+        )
+        {
+            using (SqlCommand command =
+                new SqlCommand("sp_Inventario_ExisteProductoAlmacen", con))
+            {
+                command.CommandType = CommandType.StoredProcedure;
+                command.Parameters.AddWithValue("@IdProducto", idProducto);
+                command.Parameters.AddWithValue("@IdAlmacen", idAlmacen);
+
+                object? resultado = await command.ExecuteScalarAsync();
+
+                return resultado is not null &&
+                    resultado != DBNull.Value &&
+                    Convert.ToBoolean(resultado);
             }
         }
 

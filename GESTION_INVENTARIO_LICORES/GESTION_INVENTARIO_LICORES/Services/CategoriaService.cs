@@ -1,5 +1,6 @@
 using GESTION_INVENTARIO_LICORES.DTOs.Request;
 using GESTION_INVENTARIO_LICORES.DTOs.Response;
+using GESTION_INVENTARIO_LICORES.Exceptions;
 using GESTION_INVENTARIO_LICORES.Interfaces;
 using Microsoft.Data.SqlClient;
 using System.Data;
@@ -107,27 +108,75 @@ namespace GESTION_INVENTARIO_LICORES.Services
             CategoriaReqDto request
         )
         {
+            long idCategoria;
+
             using (SqlConnection con = new SqlConnection(conexion))
             {
-                using (SqlCommand command = new SqlCommand("sp_Categoria_Crear", con))
+                await con.OpenAsync();
+
+                if (await ExisteNombreAsync(con, request.Nombre))
                 {
-                    command.CommandType = CommandType.StoredProcedure;
-                    command.Parameters.AddWithValue("@Nombre", (object?)request.Nombre ?? DBNull.Value);
-                    command.Parameters.AddWithValue("@Descripcion", (object?)request.Descripcion ?? DBNull.Value);
-
-                    await con.OpenAsync();
-
-                    object? resultado = await command.ExecuteScalarAsync();
-
-                    if (resultado is null || resultado == DBNull.Value)
-                    {
-                        return null;
-                    }
-
-                    long idCategoria = Convert.ToInt64(resultado);
-
-                    return await GetByIdAsync(idCategoria);
+                    throw new ConflictException(
+                        "Ya existe una categoría con ese nombre."
+                    );
                 }
+
+                using (SqlTransaction transaction =
+                    (SqlTransaction)await con.BeginTransactionAsync())
+                {
+                    try
+                    {
+                        using (SqlCommand command =
+                            new SqlCommand(
+                                "sp_Categoria_Crear",
+                                con,
+                                transaction
+                            ))
+                        {
+                            command.CommandType = CommandType.StoredProcedure;
+                            command.Parameters.AddWithValue("@Nombre", (object?)request.Nombre ?? DBNull.Value);
+                            command.Parameters.AddWithValue("@Descripcion", (object?)request.Descripcion ?? DBNull.Value);
+
+                            object? resultado = await command.ExecuteScalarAsync();
+
+                            if (resultado is null || resultado == DBNull.Value)
+                            {
+                                await transaction.RollbackAsync();
+                                return null;
+                            }
+
+                            idCategoria = Convert.ToInt64(resultado);
+                        }
+
+                        await transaction.CommitAsync();
+                    }
+                    catch
+                    {
+                        await transaction.RollbackAsync();
+                        throw;
+                    }
+                }
+            }
+
+            return await GetByIdAsync(idCategoria);
+        }
+
+        private async Task<bool> ExisteNombreAsync(
+            SqlConnection con,
+            string nombre
+        )
+        {
+            using (SqlCommand command =
+                new SqlCommand("sp_Categoria_ExisteNombre", con))
+            {
+                command.CommandType = CommandType.StoredProcedure;
+                command.Parameters.AddWithValue("@Nombre", nombre);
+
+                object? resultado = await command.ExecuteScalarAsync();
+
+                return resultado is not null &&
+                    resultado != DBNull.Value &&
+                    Convert.ToBoolean(resultado);
             }
         }
 

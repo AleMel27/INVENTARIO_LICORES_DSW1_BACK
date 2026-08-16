@@ -1,6 +1,8 @@
 using GESTION_INVENTARIO_LICORES.DTOs.Request;
 using GESTION_INVENTARIO_LICORES.DTOs.Response;
+using GESTION_INVENTARIO_LICORES.Exceptions;
 using GESTION_INVENTARIO_LICORES.Interfaces;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Data.SqlClient;
 
@@ -20,6 +22,7 @@ namespace GESTION_INVENTARIO_LICORES.Controllers
         }
 
         [HttpGet]
+        [Authorize(Roles = "ADMIN,ALMACENERO")]
         public async Task<IActionResult> Get(
             int pageNumber = 1,
             string? nombreProducto = null,
@@ -106,6 +109,7 @@ namespace GESTION_INVENTARIO_LICORES.Controllers
         }
 
         [HttpGet("{idInventario}")]
+        [Authorize(Roles = "ADMIN,ALMACENERO")]
         public async Task<IActionResult> GetById(
             long idInventario
         )
@@ -168,6 +172,7 @@ namespace GESTION_INVENTARIO_LICORES.Controllers
         }
 
         [HttpPost]
+        [Authorize(Roles = "ADMIN")]
         public async Task<IActionResult> Post(
             [FromBody] InventarioReqDto request
         )
@@ -211,6 +216,28 @@ namespace GESTION_INVENTARIO_LICORES.Controllers
                     }
                 );
             }
+            catch (ConflictException ex)
+            {
+                return Conflict(
+                    new ProblemDetails
+                    {
+                        Status = StatusCodes.Status409Conflict,
+                        Title = "Conflicto",
+                        Detail = ex.Message
+                    }
+                );
+            }
+            catch (BusinessValidationException ex)
+            {
+                return BadRequest(
+                    new ProblemDetails
+                    {
+                        Status = StatusCodes.Status400BadRequest,
+                        Title = "Solicitud inválida",
+                        Detail = ex.Message
+                    }
+                );
+            }
             catch (SqlException ex)
                 when (ex.Number == 547)
             {
@@ -250,6 +277,7 @@ namespace GESTION_INVENTARIO_LICORES.Controllers
         }
 
         [HttpPatch("{idInventario}/ajuste")]
+        [Authorize(Roles = "ADMIN,ALMACENERO")]
         public async Task<IActionResult> AdjustStock(
             long idInventario,
             [FromBody] AjusteInventarioReqDto request

@@ -1,6 +1,7 @@
 using GESTION_INVENTARIO_LICORES.DTOs.Request;
 using GESTION_INVENTARIO_LICORES.DTOs.Response;
 using GESTION_INVENTARIO_LICORES.Enums;
+using GESTION_INVENTARIO_LICORES.Exceptions;
 using GESTION_INVENTARIO_LICORES.Interfaces;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -10,6 +11,7 @@ namespace GESTION_INVENTARIO_LICORES.Controllers
 {
     [Route("api/[controller]")]
     [ApiController]
+    [Authorize(Roles = "ADMIN")]
     public class UsuarioController : ControllerBase
     {
         private readonly IUsuarioService _service;
@@ -180,7 +182,6 @@ namespace GESTION_INVENTARIO_LICORES.Controllers
         }
 
         [HttpPost]
-        [Authorize(Roles = "ADMIN")]
         public async Task<IActionResult> Post(
             [FromBody] UsuarioReqDto request
         )
@@ -221,6 +222,28 @@ namespace GESTION_INVENTARIO_LICORES.Controllers
                         Status = StatusCodes.Status409Conflict,
                         Title = "Conflicto",
                         Detail = "Ya existe un usuario registrado con ese correo."
+                    }
+                );
+            }
+            catch (ConflictException ex)
+            {
+                return Conflict(
+                    new ProblemDetails
+                    {
+                        Status = StatusCodes.Status409Conflict,
+                        Title = "Conflicto",
+                        Detail = ex.Message
+                    }
+                );
+            }
+            catch (BusinessValidationException ex)
+            {
+                return BadRequest(
+                    new ProblemDetails
+                    {
+                        Status = StatusCodes.Status400BadRequest,
+                        Title = "Solicitud inválida",
+                        Detail = ex.Message
                     }
                 );
             }

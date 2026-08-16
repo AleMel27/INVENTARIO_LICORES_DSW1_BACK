@@ -1,5 +1,6 @@
 using GESTION_INVENTARIO_LICORES.DTOs.Request;
 using GESTION_INVENTARIO_LICORES.DTOs.Response;
+using GESTION_INVENTARIO_LICORES.Exceptions;
 using GESTION_INVENTARIO_LICORES.Interfaces;
 using Microsoft.Data.SqlClient;
 using System.Data;
@@ -189,6 +190,138 @@ namespace GESTION_INVENTARIO_LICORES.Services
         {
             long? idCompra = null;
 
+            if (request.Detalles.Count == 0)
+            {
+                throw new BusinessValidationException(
+                    "Debe agregar al menos un producto a la compra."
+                );
+            }
+
+            bool tieneProductosDuplicados =
+                request.Detalles
+                    .GroupBy(detalle => detalle.IdProducto)
+                    .Any(grupo => grupo.Count() > 1);
+
+            if (tieneProductosDuplicados)
+            {
+                throw new ConflictException(
+                    "No se puede registrar una compra con productos duplicados en el detalle."
+                );
+            }
+
+            using (SqlConnection con = new SqlConnection(conexion))
+            {
+                await con.OpenAsync();
+
+                if (!await ExisteProveedorActivoAsync(con, request.IdProveedor))
+                {
+                    throw new BusinessValidationException(
+                        "El proveedor indicado no es válido o se encuentra inactivo."
+                    );
+                }
+
+                if (!await ExisteUsuarioActivoAsync(con, request.IdUsuario))
+                {
+                    throw new BusinessValidationException(
+                        "El usuario indicado no es válido o se encuentra inactivo."
+                    );
+                }
+
+                if (!await ExisteTipoComprobanteActivoAsync(
+                    con,
+                    request.IdTipoComprobante
+                ))
+                {
+                    throw new BusinessValidationException(
+                        "El tipo de comprobante indicado no es válido o se encuentra inactivo."
+                    );
+                }
+
+                if (await ExisteComprobanteAsync(
+                    con,
+                    request.IdProveedor,
+                    request.IdTipoComprobante,
+                    request.NumeroComprobante
+                ))
+                {
+                    throw new ConflictException(
+                        "Ya existe una compra registrada con ese comprobante."
+                    );
+                }
+
+                foreach (DetalleCompraReqDto detalle in request.Detalles)
+                {
+                    if (!await ExisteProductoActivoAsync(con, detalle.IdProducto))
+                    {
+                        throw new BusinessValidationException(
+                            "Uno o más productos del detalle no son válidos o se encuentran inactivos."
+                        );
+                    }
+                }
+
+                DataTable detallesTable = CrearDetallesTable(request.Detalles);
+
+                using (SqlTransaction transaction =
+                    (SqlTransaction)await con.BeginTransactionAsync())
+                {
+                    try
+                    {
+                        using (SqlCommand command =
+                            new SqlCommand(
+                                "sp_Compra_Crear",
+                                con,
+                                transaction
+                            ))
+                        {
+                            command.CommandType = CommandType.StoredProcedure;
+                            command.Parameters.AddWithValue("@IdProveedor", request.IdProveedor);
+                            command.Parameters.AddWithValue("@IdUsuario", request.IdUsuario);
+                            command.Parameters.AddWithValue("@IdTipoComprobante", request.IdTipoComprobante);
+                            command.Parameters.AddWithValue("@NumeroComprobante", request.NumeroComprobante);
+                            command.Parameters.AddWithValue("@Observacion", (object?)request.Observacion ?? DBNull.Value);
+
+                            SqlParameter detallesParameter = command.Parameters.AddWithValue("@Detalles", detallesTable);
+                            detallesParameter.SqlDbType = SqlDbType.Structured;
+                            detallesParameter.TypeName = "dbo.DetalleCompraTvp";
+
+                            using (SqlDataReader reader =
+                                await command.ExecuteReaderAsync())
+                            {
+                                if (await reader.ReadAsync())
+                                {
+                                    idCompra = reader.GetInt64(0);
+                                }
+                            }
+                        }
+
+                        if (!idCompra.HasValue)
+                        {
+                            await transaction.RollbackAsync();
+                            return null;
+                        }
+
+                        await transaction.CommitAsync();
+                    }
+                    catch
+                    {
+                        await transaction.RollbackAsync();
+                        throw;
+                    }
+                }
+            }
+
+            if (!idCompra.HasValue)
+            {
+                return null;
+            }
+
+            return await GetDetailAsync(idCompra.Value);
+        }
+
+        private static DataTable CrearDetallesTable(
+            List<DetalleCompraReqDto> detalles
+        )
+        {
             DataTable detallesTable = new();
 
             detallesTable.Columns.Add(
@@ -206,7 +339,7 @@ namespace GESTION_INVENTARIO_LICORES.Services
                 typeof(decimal)
             );
 
-            foreach (DetalleCompraReqDto detalle in request.Detalles)
+            foreach (DetalleCompraReqDto detalle in detalles)
             {
                 detallesTable.Rows.Add(
                     detalle.IdProducto,
@@ -215,40 +348,115 @@ namespace GESTION_INVENTARIO_LICORES.Services
                 );
             }
 
-            using (SqlConnection con = new SqlConnection(conexion))
+            return detallesTable;
+        }
+
+        private async Task<bool> ExisteProveedorActivoAsync(
+            SqlConnection con,
+            long idProveedor
+        )
+        {
+            using (SqlCommand command =
+                new SqlCommand("sp_Proveedor_ExistePorIdActivo", con))
             {
-                using (SqlCommand command = new SqlCommand("sp_Compra_Crear", con))
-                {
-                    command.CommandType = CommandType.StoredProcedure;
-                    command.Parameters.AddWithValue("@IdProveedor", request.IdProveedor);
-                    command.Parameters.AddWithValue("@IdUsuario", request.IdUsuario);
-                    command.Parameters.AddWithValue("@IdTipoComprobante", request.IdTipoComprobante);
-                    command.Parameters.AddWithValue("@NumeroComprobante", request.NumeroComprobante);
-                    command.Parameters.AddWithValue("@Observacion", (object?)request.Observacion ?? DBNull.Value);
+                command.CommandType = CommandType.StoredProcedure;
+                command.Parameters.AddWithValue("@IdProveedor", idProveedor);
 
-                    SqlParameter detallesParameter = command.Parameters.AddWithValue("@Detalles", detallesTable);
-                    detallesParameter.SqlDbType = SqlDbType.Structured;
-                    detallesParameter.TypeName = "dbo.DetalleCompraTvp";
+                object? resultado = await command.ExecuteScalarAsync();
 
-                    await con.OpenAsync();
-
-                    using (SqlDataReader reader =
-                        await command.ExecuteReaderAsync())
-                    {
-                        if (await reader.ReadAsync())
-                        {
-                            idCompra = reader.GetInt64(0);
-                        }
-                    }
-                }
+                return resultado is not null &&
+                    resultado != DBNull.Value &&
+                    Convert.ToBoolean(resultado);
             }
+        }
 
-            if (!idCompra.HasValue)
+        private async Task<bool> ExisteUsuarioActivoAsync(
+            SqlConnection con,
+            long idUsuario
+        )
+        {
+            using (SqlCommand command =
+                new SqlCommand("sp_Usuario_ExistePorIdActivo", con))
             {
-                return null;
-            }
+                command.CommandType = CommandType.StoredProcedure;
+                command.Parameters.AddWithValue("@IdUsuario", idUsuario);
 
-            return await GetDetailAsync(idCompra.Value);
+                object? resultado = await command.ExecuteScalarAsync();
+
+                return resultado is not null &&
+                    resultado != DBNull.Value &&
+                    Convert.ToBoolean(resultado);
+            }
+        }
+
+        private async Task<bool> ExisteTipoComprobanteActivoAsync(
+            SqlConnection con,
+            long idTipoComprobante
+        )
+        {
+            using (SqlCommand command =
+                new SqlCommand("sp_TipoComprobante_ExistePorIdActivo", con))
+            {
+                command.CommandType = CommandType.StoredProcedure;
+                command.Parameters.AddWithValue(
+                    "@IdTipoComprobante",
+                    idTipoComprobante
+                );
+
+                object? resultado = await command.ExecuteScalarAsync();
+
+                return resultado is not null &&
+                    resultado != DBNull.Value &&
+                    Convert.ToBoolean(resultado);
+            }
+        }
+
+        private async Task<bool> ExisteComprobanteAsync(
+            SqlConnection con,
+            long idProveedor,
+            long idTipoComprobante,
+            string numeroComprobante
+        )
+        {
+            using (SqlCommand command =
+                new SqlCommand("sp_Compra_ExisteComprobante", con))
+            {
+                command.CommandType = CommandType.StoredProcedure;
+                command.Parameters.AddWithValue("@IdProveedor", idProveedor);
+                command.Parameters.AddWithValue(
+                    "@IdTipoComprobante",
+                    idTipoComprobante
+                );
+                command.Parameters.AddWithValue(
+                    "@NumeroComprobante",
+                    numeroComprobante
+                );
+
+                object? resultado = await command.ExecuteScalarAsync();
+
+                return resultado is not null &&
+                    resultado != DBNull.Value &&
+                    Convert.ToBoolean(resultado);
+            }
+        }
+
+        private async Task<bool> ExisteProductoActivoAsync(
+            SqlConnection con,
+            long idProducto
+        )
+        {
+            using (SqlCommand command =
+                new SqlCommand("sp_Producto_ExistePorIdActivo", con))
+            {
+                command.CommandType = CommandType.StoredProcedure;
+                command.Parameters.AddWithValue("@IdProducto", idProducto);
+
+                object? resultado = await command.ExecuteScalarAsync();
+
+                return resultado is not null &&
+                    resultado != DBNull.Value &&
+                    Convert.ToBoolean(resultado);
+            }
         }
 
         public async Task<bool> ChangeStatusAsync(
