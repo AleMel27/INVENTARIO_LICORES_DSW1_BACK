@@ -1,7 +1,9 @@
-﻿using Microsoft.AspNetCore.Mvc;
-using Microsoft.Data.SqlClient;
+using GESTION_INVENTARIO_LICORES.DTOs.Request;
+using GESTION_INVENTARIO_LICORES.DTOs.Response;
+using GESTION_INVENTARIO_LICORES.Enums;
 using GESTION_INVENTARIO_LICORES.Interfaces;
-using GESTION_INVENTARIO_LICORES.Models;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.Data.SqlClient;
 
 namespace GESTION_INVENTARIO_LICORES.Controllers
 {
@@ -11,162 +13,416 @@ namespace GESTION_INVENTARIO_LICORES.Controllers
     {
         private readonly ICategoriaService _service;
 
-        public CategoriaController(ICategoriaService service)
+        public CategoriaController(
+            ICategoriaService service
+        )
         {
             _service = service;
         }
 
         [HttpGet]
-        public async Task<IActionResult> Get()
+        public async Task<IActionResult> Get(
+            int pageNumber = 1,
+            string? nombre = null,
+            EstadoFiltro estado = EstadoFiltro.Activos,
+            string orden = "DESC"
+        )
         {
-            var lista = _service.List();
-            if (lista.Count > 0)
+            if (pageNumber <= 0)
             {
-                return Ok(new Response<List<Categoria>>
-                {
-                    Success = true,
-                    Message = "Categorías obtenidas con éxito.",
-                    Data = lista
-                });
+                return BadRequest(
+                    new ProblemDetails
+                    {
+                        Status = StatusCodes.Status400BadRequest,
+                        Title = "Solicitud inválida",
+                        Detail = "El número de página debe ser mayor a 0."
+                    }
+                );
             }
-            return BadRequest(new Response<object>
+
+            orden = orden.ToUpperInvariant();
+
+            if (orden != "ASC" && orden != "DESC")
             {
-                Success = false,
-                Message = "No se encontraron categorías registradas."
-            });
+                return BadRequest(
+                    new ProblemDetails
+                    {
+                        Status = StatusCodes.Status400BadRequest,
+                        Title = "Solicitud inválida",
+                        Detail = "El orden solamente puede ser ASC o DESC."
+                    }
+                );
+            }
+
+            try
+            {
+                bool? estadoFiltro = estado switch
+                {
+                    EstadoFiltro.Activos => true,
+                    EstadoFiltro.Inactivos => false,
+                    EstadoFiltro.Todos => null,
+                    _ => true
+                };
+
+                PaginatedRespDto<CategoriaRespDto> resultado =
+                    await _service.ListAsync(
+                        pageNumber,
+                        nombre,
+                        estadoFiltro,
+                        orden
+                    );
+
+                return Ok(resultado);
+            }
+            catch (SqlException)
+            {
+                return StatusCode(
+                    StatusCodes.Status500InternalServerError,
+                    new ProblemDetails
+                    {
+                        Status = StatusCodes.Status500InternalServerError,
+                        Title = "Error interno",
+                        Detail = "Ocurrió un error al obtener las categorías."
+                    }
+                );
+            }
+            catch (Exception)
+            {
+                return StatusCode(
+                    StatusCodes.Status500InternalServerError,
+                    new ProblemDetails
+                    {
+                        Status = StatusCodes.Status500InternalServerError,
+                        Title = "Error interno",
+                        Detail = "Ocurrió un error interno del servidor."
+                    }
+                );
+            }
         }
 
         [HttpGet("{idCategoria}")]
-        public async Task<IActionResult> GetById(long idCategoria)
+        public async Task<IActionResult> GetById(
+            long idCategoria
+        )
         {
-            var categoria = _service.GetCategoria(idCategoria);
-            if (categoria == null)
+            if (idCategoria <= 0)
             {
-                return NotFound(new Response<object>
-                {
-                    Success = false,
-                    Message = "La categoría solicitada no existe."
-                });
+                return BadRequest(
+                    new ProblemDetails
+                    {
+                        Status = StatusCodes.Status400BadRequest,
+                        Title = "Solicitud inválida",
+                        Detail = "El IdCategoria debe ser mayor a 0."
+                    }
+                );
             }
-            return Ok(new Response<Categoria>
+
+            try
             {
-                Success = true,
-                Message = "Categoría encontrada.",
-                Data = categoria
-            });
+                CategoriaRespDto? categoria =
+                    await _service.GetByIdAsync(idCategoria);
+
+                if (categoria is null)
+                {
+                    return NotFound(
+                        new ProblemDetails
+                        {
+                            Status = StatusCodes.Status404NotFound,
+                            Title = "Categoría no encontrada",
+                            Detail = "La categoría solicitada no existe."
+                        }
+                    );
+                }
+
+                return Ok(categoria);
+            }
+            catch (SqlException)
+            {
+                return StatusCode(
+                    StatusCodes.Status500InternalServerError,
+                    new ProblemDetails
+                    {
+                        Status = StatusCodes.Status500InternalServerError,
+                        Title = "Error interno",
+                        Detail = "Ocurrió un error al obtener la categoría."
+                    }
+                );
+            }
+            catch (Exception)
+            {
+                return StatusCode(
+                    StatusCodes.Status500InternalServerError,
+                    new ProblemDetails
+                    {
+                        Status = StatusCodes.Status500InternalServerError,
+                        Title = "Error interno",
+                        Detail = "Ocurrió un error interno del servidor."
+                    }
+                );
+            }
         }
 
         [HttpPost]
-        public async Task<IActionResult> Post([FromBody] Categoria categoria)
+        public async Task<IActionResult> Post(
+            [FromBody] CategoriaReqDto request
+        )
         {
             try
             {
-                var resp = _service.Insert(categoria);
-                if (resp)
+                CategoriaRespDto? categoria =
+                    await _service.CreateAsync(request);
+
+                if (categoria is null)
                 {
-                    return Created("", new Response<Categoria>
-                    {
-                        Success = true,
-                        Message = "Categoría registrada correctamente.",
-                        Data = categoria
-                    });
+                    return BadRequest(
+                        new ProblemDetails
+                        {
+                            Status = StatusCodes.Status400BadRequest,
+                            Title = "Solicitud inválida",
+                            Detail = "No se pudo registrar la categoría."
+                        }
+                    );
                 }
-                return BadRequest(new Response<object>
-                {
-                    Success = false,
-                    Message = "Hubo un error al registrar la categoría."
-                });
+
+                return CreatedAtAction(
+                    nameof(GetById),
+                    new
+                    {
+                        idCategoria = categoria.IdCategoria
+                    },
+                    categoria
+                );
             }
             catch (SqlException ex)
+                when (ex.Number == 2601 ||
+                      ex.Number == 2627)
             {
-                return BadRequest(new Response<object>
-                {
-                    Success = false,
-                    Message = ex.Message
-                });
+                return Conflict(
+                    new ProblemDetails
+                    {
+                        Status = StatusCodes.Status409Conflict,
+                        Title = "Conflicto",
+                        Detail = "Ya existe una categoría con ese nombre."
+                    }
+                );
+            }
+            catch (SqlException)
+            {
+                return StatusCode(
+                    StatusCodes.Status500InternalServerError,
+                    new ProblemDetails
+                    {
+                        Status = StatusCodes.Status500InternalServerError,
+                        Title = "Error interno",
+                        Detail = "Ocurrió un error al registrar la categoría."
+                    }
+                );
+            }
+            catch (Exception)
+            {
+                return StatusCode(
+                    StatusCodes.Status500InternalServerError,
+                    new ProblemDetails
+                    {
+                        Status = StatusCodes.Status500InternalServerError,
+                        Title = "Error interno",
+                        Detail = "Ocurrió un error interno del servidor."
+                    }
+                );
             }
         }
 
-        [HttpPut]
-        public async Task<IActionResult> Put([FromBody] Categoria categoria)
+        [HttpPut("{idCategoria}")]
+        public async Task<IActionResult> Put(
+            long idCategoria,
+            [FromBody] CategoriaUpdateReqDto request
+        )
         {
-            var existe = _service.GetCategoria(categoria.IdCategoria);
-            if (existe == null)
+            if (idCategoria <= 0)
             {
-                return NotFound(new Response<object>
-                {
-                    Success = false,
-                    Message = "No se encontró la categoría para actualizar."
-                });
+                return BadRequest(
+                    new ProblemDetails
+                    {
+                        Status = StatusCodes.Status400BadRequest,
+                        Title = "Solicitud inválida",
+                        Detail = "El IdCategoria debe ser mayor a 0."
+                    }
+                );
             }
 
             try
             {
-                var resp = _service.Update(categoria);
-                if (resp)
+                CategoriaRespDto? existente =
+                    await _service.GetByIdAsync(idCategoria);
+
+                if (existente is null)
                 {
-                    return Ok(new Response<Categoria>
-                    {
-                        Success = true,
-                        Message = "Se actualizó la categoría correctamente.",
-                        Data = categoria
-                    });
+                    return NotFound(
+                        new ProblemDetails
+                        {
+                            Status = StatusCodes.Status404NotFound,
+                            Title = "Categoría no encontrada",
+                            Detail = "No se encontró la categoría para actualizar."
+                        }
+                    );
                 }
-                return BadRequest(new Response<object>
+
+                CategoriaRespDto? actualizada =
+                    await _service.UpdateAsync(
+                        idCategoria,
+                        request
+                    );
+
+                if (actualizada is null)
                 {
-                    Success = false,
-                    Message = "Hubo un error al actualizar la categoría."
-                });
+                    return NotFound(
+                        new ProblemDetails
+                        {
+                            Status = StatusCodes.Status404NotFound,
+                            Title = "Categoría no encontrada",
+                            Detail = "No se encontró la categoría para actualizar."
+                        }
+                    );
+                }
+
+                return Ok(actualizada);
             }
             catch (SqlException ex)
+                when (ex.Number == 2601 ||
+                      ex.Number == 2627)
             {
-                return BadRequest(new Response<object>
-                {
-                    Success = false,
-                    Message = ex.Message
-                });
+                return Conflict(
+                    new ProblemDetails
+                    {
+                        Status = StatusCodes.Status409Conflict,
+                        Title = "Conflicto",
+                        Detail = "Ya existe una categoría con ese nombre."
+                    }
+                );
+            }
+            catch (SqlException)
+            {
+                return StatusCode(
+                    StatusCodes.Status500InternalServerError,
+                    new ProblemDetails
+                    {
+                        Status = StatusCodes.Status500InternalServerError,
+                        Title = "Error interno",
+                        Detail = "Ocurrió un error al actualizar la categoría."
+                    }
+                );
+            }
+            catch (Exception)
+            {
+                return StatusCode(
+                    StatusCodes.Status500InternalServerError,
+                    new ProblemDetails
+                    {
+                        Status = StatusCodes.Status500InternalServerError,
+                        Title = "Error interno",
+                        Detail = "Ocurrió un error interno del servidor."
+                    }
+                );
             }
         }
 
-        [HttpDelete("{idCategoria}")]
-        public async Task<IActionResult> Delete(long idCategoria)
+        [HttpPatch("{idCategoria}/estado")]
+        public async Task<IActionResult> ChangeStatus(
+            long idCategoria,
+            [FromQuery] bool estado
+        )
         {
-            var categoria = _service.GetCategoria(idCategoria);
-            if (categoria == null)
+            if (idCategoria <= 0)
             {
-                return NotFound(new Response<object>
-                {
-                    Success = false,
-                    Message = "No se encontró la categoría para dar de baja."
-                });
+                return BadRequest(
+                    new ProblemDetails
+                    {
+                        Status = StatusCodes.Status400BadRequest,
+                        Title = "Solicitud inválida",
+                        Detail = "El IdCategoria debe ser mayor a 0."
+                    }
+                );
             }
 
             try
             {
-                var resp = _service.Delete(idCategoria);
-                if (resp)
+                CategoriaRespDto? categoria =
+                    await _service.GetByIdAsync(idCategoria);
+
+                if (categoria is null)
                 {
-                    categoria.Estado = false;
-                    return Ok(new Response<Categoria>
-                    {
-                        Success = true,
-                        Message = "Se dio de baja la categoría correctamente.",
-                        Data = categoria
-                    });
+                    return NotFound(
+                        new ProblemDetails
+                        {
+                            Status = StatusCodes.Status404NotFound,
+                            Title = "Categoría no encontrada",
+                            Detail = "No se encontró la categoría solicitada."
+                        }
+                    );
                 }
-                return BadRequest(new Response<object>
+
+                if (categoria.Estado == estado)
                 {
-                    Success = false,
-                    Message = "Hubo un error al dar de baja la categoría."
-                });
+                    string mensajeConflicto = estado
+                        ? "La categoría ya se encuentra activa."
+                        : "La categoría ya se encuentra inactiva.";
+
+                    return Conflict(
+                        new ProblemDetails
+                        {
+                            Status = StatusCodes.Status409Conflict,
+                            Title = "Conflicto",
+                            Detail = mensajeConflicto
+                        }
+                    );
+                }
+
+                bool cambiado =
+                    await _service.ChangeStatusAsync(
+                        idCategoria,
+                        estado
+                    );
+
+                if (!cambiado)
+                {
+                    return BadRequest(
+                        new ProblemDetails
+                        {
+                            Status = StatusCodes.Status400BadRequest,
+                            Title = "Solicitud inválida",
+                            Detail = "No se pudo cambiar el estado de la categoría."
+                        }
+                    );
+                }
+
+                CategoriaRespDto? actualizada =
+                    await _service.GetByIdAsync(idCategoria);
+
+                return Ok(actualizada);
             }
-            catch (SqlException ex)
+            catch (SqlException)
             {
-                return BadRequest(new Response<object>
-                {
-                    Success = false,
-                    Message = ex.Message
-                });
+                return StatusCode(
+                    StatusCodes.Status500InternalServerError,
+                    new ProblemDetails
+                    {
+                        Status = StatusCodes.Status500InternalServerError,
+                        Title = "Error interno",
+                        Detail = "Ocurrió un error al cambiar el estado de la categoría."
+                    }
+                );
+            }
+            catch (Exception)
+            {
+                return StatusCode(
+                    StatusCodes.Status500InternalServerError,
+                    new ProblemDetails
+                    {
+                        Status = StatusCodes.Status500InternalServerError,
+                        Title = "Error interno",
+                        Detail = "Ocurrió un error interno del servidor."
+                    }
+                );
             }
         }
     }

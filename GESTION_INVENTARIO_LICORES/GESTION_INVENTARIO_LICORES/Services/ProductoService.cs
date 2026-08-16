@@ -1,212 +1,234 @@
-﻿using Microsoft.Data.SqlClient;
-using System.Data;
+using GESTION_INVENTARIO_LICORES.DTOs.Request;
+using GESTION_INVENTARIO_LICORES.DTOs.Response;
 using GESTION_INVENTARIO_LICORES.Interfaces;
-using GESTION_INVENTARIO_LICORES.Models;
+using Microsoft.Data.SqlClient;
+using System.Data;
 
 namespace GESTION_INVENTARIO_LICORES.Services
 {
     public class ProductoService : IProductoService
     {
-        private readonly string? _conexion;
+        private const int PageSize = 10;
+        private readonly string conexion;
 
         public ProductoService(IConfiguration configuration)
         {
-            _conexion = configuration.GetConnectionString("conexion");
+            conexion = configuration.GetConnectionString("conexion")
+                ?? throw new InvalidOperationException(
+                    "No se encontró la cadena de conexión 'conexion'."
+                );
         }
 
-        public List<Producto> List()
+        public async Task<PaginatedRespDto<ProductoRespDto>> ListAsync(
+            int pageNumber = 1,
+            long? idMarca = null,
+            long? idCategoria = null,
+            string? codigo = null,
+            string? nombre = null,
+            bool? estado = true,
+            string orden = "DESC"
+        )
         {
-            List<Producto> lista = new List<Producto>();
+            List<ProductoRespDto> productos = new();
 
-            using (SqlConnection con = new SqlConnection(_conexion))
+            using (SqlConnection con = new SqlConnection(conexion))
             {
-                using (SqlCommand command = new SqlCommand("sp_listar_productos", con))
+                using (SqlCommand command = new SqlCommand("sp_Producto_Listar", con))
                 {
                     command.CommandType = CommandType.StoredProcedure;
-                    con.Open();
-                    using (SqlDataReader reader = command.ExecuteReader())
-                    {
-                        while (reader.Read())
-                        {
-                            lista.Add(new Producto
-                            {
-                                IdProducto = reader.GetInt64(reader.GetOrdinal("IdProducto")),
-                                Codigo = reader.GetString(reader.GetOrdinal("Codigo")),
-                                Nombre = reader.GetString(reader.GetOrdinal("Producto")), // Mapea 'Producto' según tu alias SQL
-                                Descripcion = reader.IsDBNull(reader.GetOrdinal("Descripcion")) ? null : reader.GetString(reader.GetOrdinal("Descripcion")),
-                                CapacidadMl = reader.GetInt32(reader.GetOrdinal("CapacidadMl")),
-                                GradoAlcoholico = reader.GetDecimal(reader.GetOrdinal("GradoAlcoholico")),
-                                PrecioVenta = reader.GetDecimal(reader.GetOrdinal("PrecioVenta")),
-                                StockMinimo = reader.GetInt32(reader.GetOrdinal("StockMinimo")),
-                                IdCategoria = reader.GetInt64(reader.GetOrdinal("IdCategoria")),
-                                IdMarca = reader.GetInt64(reader.GetOrdinal("IdMarca")),
-                                Estado = reader.GetBoolean(reader.GetOrdinal("Estado")),
-                                FechaCreacion = reader.GetDateTime(reader.GetOrdinal("FechaCreacion")),
-                                FechaActualizacion = reader.GetDateTime(reader.GetOrdinal("FechaActualizacion")),
+                    command.Parameters.AddWithValue("@IdMarca", (object?)idMarca ?? DBNull.Value);
+                    command.Parameters.AddWithValue("@IdCategoria", (object?)idCategoria ?? DBNull.Value);
+                    command.Parameters.AddWithValue("@Codigo", (object?)codigo ?? DBNull.Value);
+                    command.Parameters.AddWithValue("@Nombre", (object?)nombre ?? DBNull.Value);
+                    command.Parameters.AddWithValue("@Estado", (object?)estado ?? DBNull.Value);
+                    command.Parameters.AddWithValue("@Orden", orden);
 
-                                // Inicializamos las propiedades de navegación que expone el JOIN
-                                Categoria = new Categoria
+                    await con.OpenAsync();
+
+                    using (SqlDataReader reader = await command.ExecuteReaderAsync())
+                    {
+                        while (await reader.ReadAsync())
+                        {
+                            productos.Add(new ProductoRespDto
+                            {
+                                IdProducto = reader.GetInt64(0),
+                                Codigo = reader.GetString(1),
+                                Nombre = reader.GetString(2),
+                                Descripcion = reader.IsDBNull(3) ? null : reader.GetString(3),
+                                CapacidadMl = reader.GetInt32(4),
+                                GradoAlcoholico = reader.GetDecimal(5),
+                                PrecioVenta = reader.GetDecimal(6),
+                                StockMinimo = reader.GetInt32(7),
+
+                                Categoria = new CategoriaResumenRespDto
                                 {
-                                    IdCategoria = reader.GetInt64(reader.GetOrdinal("IdCategoria")),
-                                    Nombre = reader.GetString(reader.GetOrdinal("Categoria"))
+                                    IdCategoria = reader.GetInt64(8),
+                                    Nombre = reader.GetString(9)
                                 },
-                                Marca = new Marca
+
+                                Marca = new MarcaResumenRespDto
                                 {
-                                    IdMarca = reader.GetInt64(reader.GetOrdinal("IdMarca")),
-                                    Nombre = reader.GetString(reader.GetOrdinal("Marca"))
-                                }
+                                    IdMarca = reader.GetInt64(10),
+                                    Nombre = reader.GetString(11)
+                                },
+
+                                Estado = reader.GetBoolean(12)
                             });
                         }
                     }
                 }
             }
-            return lista;
+            int totalItems = productos.Count;
+
+            List<ProductoRespDto> items = productos
+                .Skip((pageNumber - 1) * PageSize)
+                .Take(PageSize)
+                .ToList();
+
+            return new PaginatedRespDto<ProductoRespDto>
+            {
+                Items = items,
+                PageNumber = pageNumber,
+                TotalItems = totalItems
+            };
         }
 
-        public Producto GetProducto(long idProducto)
+        public async Task<ProductoRespDto?> GetByIdAsync(
+            long idProducto
+        )
         {
-            Producto producto = null;
-
-            using (SqlConnection con = new SqlConnection(_conexion))
+            using (SqlConnection con = new SqlConnection(conexion))
             {
-                using (SqlCommand command = new SqlCommand("sp_buscar_producto", con))
+                using (SqlCommand command =
+                    new SqlCommand("sp_Producto_ObtenerPorId", con))
                 {
                     command.CommandType = CommandType.StoredProcedure;
+
                     command.Parameters.AddWithValue("@IdProducto", idProducto);
-                    con.Open();
-                    using (SqlDataReader reader = command.ExecuteReader())
+
+                    await con.OpenAsync();
+
+                    using (SqlDataReader reader =
+                        await command.ExecuteReaderAsync())
                     {
-                        if (reader.Read())
+                        if (await reader.ReadAsync())
                         {
-                            producto = new Producto
+                            return new ProductoRespDto
                             {
-                                IdProducto = reader.GetInt64(reader.GetOrdinal("IdProducto")),
-                                IdCategoria = reader.GetInt64(reader.GetOrdinal("IdCategoria")),
-                                IdMarca = reader.GetInt64(reader.GetOrdinal("IdMarca")),
-                                Codigo = reader.GetString(reader.GetOrdinal("Codigo")),
-                                Nombre = reader.GetString(reader.GetOrdinal("Nombre")), // Aquí se llama 'Nombre' en tu SP de búsqueda
-                                Descripcion = reader.IsDBNull(reader.GetOrdinal("Descripcion")) ? null : reader.GetString(reader.GetOrdinal("Descripcion")),
-                                CapacidadMl = reader.GetInt32(reader.GetOrdinal("CapacidadMl")),
-                                GradoAlcoholico = reader.GetDecimal(reader.GetOrdinal("GradoAlcoholico")),
-                                PrecioVenta = reader.GetDecimal(reader.GetOrdinal("PrecioVenta")),
-                                StockMinimo = reader.GetInt32(reader.GetOrdinal("StockMinimo")),
-                                Estado = reader.GetBoolean(reader.GetOrdinal("Estado")),
-                                FechaCreacion = reader.GetDateTime(reader.GetOrdinal("FechaCreacion")),
-                                FechaActualizacion = reader.GetDateTime(reader.GetOrdinal("FechaActualizacion"))
+                                IdProducto = reader.GetInt64(0),
+                                Codigo = reader.GetString(1),
+                                Nombre = reader.GetString(2),
+                                Descripcion = reader.IsDBNull(3) ? null : reader.GetString(3),
+                                CapacidadMl = reader.GetInt32(4),
+                                GradoAlcoholico = reader.GetDecimal(5),
+                                PrecioVenta = reader.GetDecimal(6),
+                                StockMinimo = reader.GetInt32(7),
+
+                                Categoria = new CategoriaResumenRespDto
+                                {
+                                    IdCategoria = reader.GetInt64(8),
+                                    Nombre = reader.GetString(9)
+                                },
+
+                                Marca = new MarcaResumenRespDto
+                                {
+                                    IdMarca = reader.GetInt64(10),
+                                    Nombre = reader.GetString(11)
+                                },
+
+                                Estado = reader.GetBoolean(12)
                             };
                         }
                     }
                 }
             }
-            return producto;
+            return null;
         }
 
-        public bool Insert(Producto producto)
+        public async Task<ProductoRespDto?> CreateAsync(
+            ProductoReqDto request
+        )
         {
-            bool resp = false;
-            using (SqlConnection con = new SqlConnection(_conexion))
+            using (SqlConnection con = new SqlConnection(conexion))
             {
-                con.Open();
-                SqlTransaction transaction = con.BeginTransaction();
-                try
+                using (SqlCommand command = new SqlCommand("sp_Producto_Crear", con))
                 {
-                    using (SqlCommand command = new SqlCommand("sp_insert_producto", con))
+                    command.CommandType = CommandType.StoredProcedure;
+                    command.Parameters.AddWithValue("@IdCategoria", request.IdCategoria);
+                    command.Parameters.AddWithValue("@IdMarca", request.IdMarca);
+                    command.Parameters.AddWithValue("@Codigo", request.Codigo);
+                    command.Parameters.AddWithValue("@Nombre", request.Nombre);
+                    command.Parameters.AddWithValue("@Descripcion", (object?)request.Descripcion ?? DBNull.Value);
+                    command.Parameters.AddWithValue("@CapacidadMl", request.CapacidadMl);
+                    command.Parameters.AddWithValue("@GradoAlcoholico", request.GradoAlcoholico);
+                    command.Parameters.AddWithValue("@PrecioVenta", request.PrecioVenta);
+                    command.Parameters.AddWithValue("@StockMinimo", request.StockMinimo);
+
+                    await con.OpenAsync();
+
+                    object? resultado = await command.ExecuteScalarAsync();
+
+                    if (resultado is null || resultado == DBNull.Value)
                     {
-                        command.Transaction = transaction;
-                        command.CommandType = CommandType.StoredProcedure;
-                        command.Parameters.AddWithValue("@IdCategoria", producto.IdCategoria);
-                        command.Parameters.AddWithValue("@IdMarca", producto.IdMarca);
-                        command.Parameters.AddWithValue("@Codigo", producto.Codigo);
-                        command.Parameters.AddWithValue("@Nombre", producto.Nombre);
-                        command.Parameters.AddWithValue("@Descripcion", (object)producto.Descripcion ?? DBNull.Value);
-                        command.Parameters.AddWithValue("@CapacidadMl", producto.CapacidadMl);
-                        command.Parameters.AddWithValue("@GradoAlcoholico", producto.GradoAlcoholico);
-                        command.Parameters.AddWithValue("@PrecioVenta", producto.PrecioVenta);
-                        command.Parameters.AddWithValue("@StockMinimo", producto.StockMinimo);
-
-                        var id = command.ExecuteScalar();
-                        if (id != null)
-                        {
-                            producto.IdProducto = Convert.ToInt64(id);
-                            resp = true;
-                        }
-
-                        transaction.Commit();
+                        return null;
                     }
-                }
-                catch (Exception)
-                {
-                    transaction.Rollback();
-                    throw;
+
+                    long idProducto = Convert.ToInt64(resultado);
+
+                    return await GetByIdAsync(idProducto);
                 }
             }
-            return resp;
         }
 
-        public bool Update(Producto producto)
+        public async Task<ProductoRespDto?> UpdateAsync(
+            long idProducto,
+            ProductoUpdateReqDto request
+        )
         {
-            bool resp = false;
-            using (SqlConnection con = new SqlConnection(_conexion))
+            using (SqlConnection con = new SqlConnection(conexion))
             {
-                con.Open();
-                SqlTransaction transaction = con.BeginTransaction();
-                try
+                using (SqlCommand command = new SqlCommand("sp_Producto_Actualizar", con))
                 {
-                    using (SqlCommand command = new SqlCommand("sp_update_producto", con))
-                    {
-                        command.Transaction = transaction;
-                        command.CommandType = CommandType.StoredProcedure;
-                        command.Parameters.AddWithValue("@IdProducto", producto.IdProducto);
-                        command.Parameters.AddWithValue("@IdCategoria", producto.IdCategoria);
-                        command.Parameters.AddWithValue("@IdMarca", producto.IdMarca);
-                        command.Parameters.AddWithValue("@Codigo", producto.Codigo);
-                        command.Parameters.AddWithValue("@Nombre", producto.Nombre);
-                        command.Parameters.AddWithValue("@Descripcion", (object)producto.Descripcion ?? DBNull.Value);
-                        command.Parameters.AddWithValue("@CapacidadMl", producto.CapacidadMl);
-                        command.Parameters.AddWithValue("@GradoAlcoholico", producto.GradoAlcoholico);
-                        command.Parameters.AddWithValue("@PrecioVenta", producto.PrecioVenta);
-                        command.Parameters.AddWithValue("@StockMinimo", producto.StockMinimo);
-                        command.Parameters.AddWithValue("@Estado", producto.Estado);
+                    command.CommandType = CommandType.StoredProcedure;
+                    command.Parameters.AddWithValue("@IdProducto", idProducto);
+                    command.Parameters.AddWithValue("@IdCategoria", request.IdCategoria);
+                    command.Parameters.AddWithValue("@IdMarca", request.IdMarca);
+                    command.Parameters.AddWithValue("@Nombre", request.Nombre);
+                    command.Parameters.AddWithValue("@Descripcion", (object?)request.Descripcion ?? DBNull.Value);
+                    command.Parameters.AddWithValue("@CapacidadMl", request.CapacidadMl);
+                    command.Parameters.AddWithValue("@GradoAlcoholico", request.GradoAlcoholico);
+                    command.Parameters.AddWithValue("@PrecioVenta", request.PrecioVenta);
+                    command.Parameters.AddWithValue("@StockMinimo", request.StockMinimo);
 
-                        resp = command.ExecuteNonQuery() > 0;
-                        transaction.Commit();
-                    }
-                }
-                catch (Exception)
-                {
-                    transaction.Rollback();
-                    throw;
+                    await con.OpenAsync();
+
+                    await command.ExecuteNonQueryAsync();
+
+                    return await GetByIdAsync(idProducto);
                 }
             }
-            return resp;
         }
 
-        public bool Delete(long idProducto)
+        public async Task<bool> ChangeStatusAsync(
+            long idProducto,
+            bool estado
+        )
         {
-            bool resp = false;
-            using (SqlConnection con = new SqlConnection(_conexion))
+            using (SqlConnection con = new SqlConnection(conexion))
             {
-                con.Open();
-                SqlTransaction transaction = con.BeginTransaction();
-                try
+                using (SqlCommand command = new SqlCommand("sp_Producto_CambiarEstado", con))
                 {
-                    using (SqlCommand command = new SqlCommand("sp_delete_producto", con))
-                    {
-                        command.Transaction = transaction;
-                        command.CommandType = CommandType.StoredProcedure;
-                        command.Parameters.AddWithValue("@IdProducto", idProducto);
+                    command.CommandType = CommandType.StoredProcedure;
+                    command.Parameters.AddWithValue("@IdProducto", idProducto);
+                    command.Parameters.AddWithValue("@Estado", estado);
 
-                        resp = command.ExecuteNonQuery() > 0;
-                        transaction.Commit();
-                    }
-                }
-                catch (Exception)
-                {
-                    transaction.Rollback();
-                    throw;
+                    await con.OpenAsync();
+
+                    await command.ExecuteNonQueryAsync();
+
+                    return true;
                 }
             }
-            return resp;
         }
     }
 }

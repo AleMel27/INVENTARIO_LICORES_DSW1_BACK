@@ -1,7 +1,7 @@
-﻿using Microsoft.AspNetCore.Mvc;
-using Microsoft.Data.SqlClient;
+using GESTION_INVENTARIO_LICORES.DTOs.Response;
 using GESTION_INVENTARIO_LICORES.Interfaces;
-using GESTION_INVENTARIO_LICORES.Models;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.Data.SqlClient;
 
 namespace GESTION_INVENTARIO_LICORES.Controllers
 {
@@ -11,82 +11,60 @@ namespace GESTION_INVENTARIO_LICORES.Controllers
     {
         private readonly IDetalleCompraService _service;
 
-        public DetalleCompraController(IDetalleCompraService service)
+        public DetalleCompraController(
+            IDetalleCompraService service
+        )
         {
             _service = service;
         }
-        // GET: api/DetalleCompra
-        [HttpGet]
-        public async Task<IActionResult> GetAll()
-        {
-            var lista = _service.ListAll();
-            if (lista.Count > 0)
-            {
-                return Ok(new Response<List<DetalleCompra>>
-                {
-                    Success = true,
-                    Message = "Todos los detalles de compras obtenidos con éxito.",
-                    Data = lista
-                });
-            }
-            return BadRequest(new Response<object>
-            {
-                Success = false,
-                Message = "No se encontraron detalles de compras registrados."
-            });
-        }
 
-        // GET: api/DetalleCompra/compra/5
         [HttpGet("compra/{idCompra}")]
-        public async Task<IActionResult> GetByCompra(long idCompra)
+        public async Task<IActionResult> GetByCompra(
+            long idCompra
+        )
         {
-            var lista = _service.ListByCompra(idCompra);
-            if (lista.Count > 0)
+            if (idCompra <= 0)
             {
-                return Ok(new Response<List<DetalleCompra>>
-                {
-                    Success = true,
-                    Message = $"Detalles de la compra {idCompra} obtenidos con éxito.",
-                    Data = lista
-                });
+                return BadRequest(
+                    new ProblemDetails
+                    {
+                        Status = StatusCodes.Status400BadRequest,
+                        Title = "Solicitud inválida",
+                        Detail = "El IdCompra debe ser mayor a 0."
+                    }
+                );
             }
-            return BadRequest(new Response<object>
-            {
-                Success = false,
-                Message = "No se encontraron productos en el detalle de esta compra."
-            });
-        }
 
-        // POST: api/DetalleCompra
-        [HttpPost]
-        public async Task<IActionResult> Post([FromBody] DetalleCompra detalle)
-        {
             try
             {
-                var resp = _service.Insert(detalle);
-                if (resp)
-                {
-                    return Created("", new Response<DetalleCompra>
-                    {
-                        Success = true,
-                        Message = "Producto agregado al detalle de la compra correctamente.",
-                        Data = detalle
-                    });
-                }
-                return BadRequest(new Response<object>
-                {
-                    Success = false,
-                    Message = "Hubo un error al registrar el artículo en el detalle."
-                });
+                IReadOnlyList<DetalleCompraRespDto> detalles =
+                    await _service.ListByCompraAsync(idCompra);
+
+                return Ok(detalles);
             }
-            catch (SqlException ex)
+            catch (SqlException)
             {
-                // Captura los RAISERROR personalizados de tu base de datos (por ejemplo, si ya no está PENDIENTE)
-                return BadRequest(new Response<object>
-                {
-                    Success = false,
-                    Message = ex.Message
-                });
+                return StatusCode(
+                    StatusCodes.Status500InternalServerError,
+                    new ProblemDetails
+                    {
+                        Status = StatusCodes.Status500InternalServerError,
+                        Title = "Error interno",
+                        Detail = "Ocurrió un error al obtener los detalles de la compra."
+                    }
+                );
+            }
+            catch (Exception)
+            {
+                return StatusCode(
+                    StatusCodes.Status500InternalServerError,
+                    new ProblemDetails
+                    {
+                        Status = StatusCodes.Status500InternalServerError,
+                        Title = "Error interno",
+                        Detail = "Ocurrió un error interno del servidor."
+                    }
+                );
             }
         }
     }

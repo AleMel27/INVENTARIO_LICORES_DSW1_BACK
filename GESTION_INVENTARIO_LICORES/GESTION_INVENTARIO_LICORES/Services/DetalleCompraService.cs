@@ -1,126 +1,71 @@
-﻿using Microsoft.Data.SqlClient;
-using System.Data;
+using GESTION_INVENTARIO_LICORES.DTOs.Response;
 using GESTION_INVENTARIO_LICORES.Interfaces;
-using GESTION_INVENTARIO_LICORES.Models;
+using Microsoft.Data.SqlClient;
+using System.Data;
 
 namespace GESTION_INVENTARIO_LICORES.Services
 {
     public class DetalleCompraService : IDetalleCompraService
     {
-        private readonly string? _conexion;
+        private readonly string conexion;
 
         public DetalleCompraService(IConfiguration configuration)
         {
-            _conexion = configuration.GetConnectionString("conexion");
+            conexion = configuration.GetConnectionString("conexion")
+                ?? throw new InvalidOperationException(
+                    "No se encontró la cadena de conexión 'conexion'."
+                );
         }
 
-        public List<DetalleCompra> ListAll()
+        public async Task<IReadOnlyList<DetalleCompraRespDto>> ListByCompraAsync(
+            long idCompra
+        )
         {
-            List<DetalleCompra> lista = new List<DetalleCompra>();
+            List<DetalleCompraRespDto> detalles = new();
 
-            using (SqlConnection con = new SqlConnection(_conexion))
+            using (SqlConnection con = new SqlConnection(conexion))
             {
-                using (SqlCommand command = new SqlCommand("sp_listar_detalle_compra", con))
+                using (SqlCommand command =
+                    new SqlCommand("sp_DetalleCompra_ListarPorCompra", con))
                 {
                     command.CommandType = CommandType.StoredProcedure;
-                    con.Open();
-                    using (SqlDataReader reader = command.ExecuteReader())
-                    {
-                        while (reader.Read())
-                        {
-                            lista.Add(new DetalleCompra
-                            {
-                                IdDetalleCompra = reader.GetInt64(reader.GetOrdinal("IdDetalleCompra")),
-                                IdCompra = reader.GetInt64(reader.GetOrdinal("IdCompra")),
-                                IdProducto = reader.GetInt64(reader.GetOrdinal("IdProducto")),
-                                Cantidad = reader.GetInt32(reader.GetOrdinal("Cantidad")),
-                                CostoUnitario = reader.GetDecimal(reader.GetOrdinal("CostoUnitario")),
-                                Subtotal = reader.GetDecimal(reader.GetOrdinal("Subtotal")),
 
-                                Producto = new Producto
-                                {
-                                    IdProducto = reader.GetInt64(reader.GetOrdinal("IdProducto")),
-                                    Codigo = reader.GetString(reader.GetOrdinal("CodigoProducto")),
-                                    Nombre = reader.GetString(reader.GetOrdinal("Producto"))
-                                }
-                            });
-                        }
-                    }
-                }
-            }
-            return lista;
-        }
-
-        public List<DetalleCompra> ListByCompra(long idCompra)
-        {
-            List<DetalleCompra> lista = new List<DetalleCompra>();
-
-            using (SqlConnection con = new SqlConnection(_conexion))
-            {
-                using (SqlCommand command = new SqlCommand("sp_listar_detalle_compra_by_id", con))
-                {
-                    command.CommandType = CommandType.StoredProcedure;
                     command.Parameters.AddWithValue("@IdCompra", idCompra);
 
-                    con.Open();
-                    using (SqlDataReader reader = command.ExecuteReader())
-                    {
-                        while (reader.Read())
-                        {
-                            lista.Add(new DetalleCompra
-                            {
-                                IdDetalleCompra = reader.GetInt64(reader.GetOrdinal("IdDetalleCompra")),
-                                IdCompra = reader.GetInt64(reader.GetOrdinal("IdCompra")),
-                                IdProducto = reader.GetInt64(reader.GetOrdinal("IdProducto")),
-                                Cantidad = reader.GetInt32(reader.GetOrdinal("Cantidad")),
-                                CostoUnitario = reader.GetDecimal(reader.GetOrdinal("CostoUnitario")),
-                                Subtotal = reader.GetDecimal(reader.GetOrdinal("Subtotal")),
+                    await con.OpenAsync();
 
-                                Producto = new Producto
+                    using (SqlDataReader reader =
+                        await command.ExecuteReaderAsync())
+                    {
+                        while (await reader.ReadAsync())
+                        {
+                            detalles.Add(new DetalleCompraRespDto
+                            {
+                                IdDetalleCompra = reader.GetInt64(0),
+
+                                Compra = new CompraResumenRespDto
                                 {
-                                    IdProducto = reader.GetInt64(reader.GetOrdinal("IdProducto")),
-                                    Codigo = reader.GetString(reader.GetOrdinal("CodigoProducto")),
-                                    Nombre = reader.GetString(reader.GetOrdinal("Producto"))
-                                }
+                                    IdCompra = reader.GetInt64(1),
+                                    NumeroComprobante = reader.GetString(2)
+                                },
+
+                                Producto = new ProductoResumenRespDto
+                                {
+                                    IdProducto = reader.GetInt64(3),
+                                    Codigo = reader.GetString(4),
+                                    Nombre = reader.GetString(5)
+                                },
+
+                                Cantidad = reader.GetInt32(6),
+                                CostoUnitario = reader.GetDecimal(7),
+                                Subtotal = reader.GetDecimal(8)
                             });
                         }
                     }
                 }
             }
-            return lista;
-        }
 
-        public bool Insert(DetalleCompra detalle)
-        {
-            bool resp = false;
-            using (SqlConnection con = new SqlConnection(_conexion))
-            {
-                con.Open();
-                SqlTransaction transaction = con.BeginTransaction();
-                try
-                {
-                    using (SqlCommand command = new SqlCommand("sp_insert_detalle_compra", con))
-                    {
-                        command.Transaction = transaction;
-                        command.CommandType = CommandType.StoredProcedure;
-
-                        command.Parameters.AddWithValue("@IdCompra", detalle.IdCompra);
-                        command.Parameters.AddWithValue("@IdProducto", detalle.IdProducto);
-                        command.Parameters.AddWithValue("@Cantidad", detalle.Cantidad);
-                        command.Parameters.AddWithValue("@CostoUnitario", detalle.CostoUnitario);
-
-                        resp = command.ExecuteNonQuery() > 0;
-
-                        transaction.Commit();
-                    }
-                }
-                catch (Exception)
-                {
-                    transaction.Rollback();
-                    throw;
-                }
-            }
-            return resp;
+            return detalles;
         }
     }
 }

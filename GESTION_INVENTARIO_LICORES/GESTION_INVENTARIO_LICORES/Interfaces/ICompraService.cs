@@ -1,13 +1,30 @@
-﻿using GESTION_INVENTARIO_LICORES.DTOs;
+using GESTION_INVENTARIO_LICORES.DTOs.Request;
+using GESTION_INVENTARIO_LICORES.DTOs.Response;
 
-namespace GESTION_INVENTARIO_LICORES.Services
+namespace GESTION_INVENTARIO_LICORES.Interfaces;
+
+public interface ICompraService
 {
-    public interface ICompraService
-    {
-        long RegistrarCompra(CompraRegistroDTO dto);
+    Task<PaginatedRespDto<CompraRespDto>> ListAsync(
+        int pageNumber = 1,
+        string? estado = null,
+        long? idTipoComprobante = null,
+        DateTime? fecha = null,
+        string? razonSocial = null,
+        string? numeroComprobante = null,
+        string orden = "DESC"
+    );
 
-        void ProcesarRecepcion(long idCompra, RecepcionCompraDTO dto);
+    Task<CompraDetalleRespDto?> GetDetailAsync(
+        long idCompra
+    );
 
-        void AnularCompra(long idCompra, AnulacionCompraDTO dto);
-    }
+    Task<CompraDetalleRespDto?> CreateAsync(
+        CompraReqDto request
+    );
+
+    Task<bool> ChangeStatusAsync(
+        long idCompra,
+        EstadoCompraReqDto request
+    );
 }

@@ -5,8 +5,8 @@
         public long IdMarca { get; set; }
         public string Nombre { get; set; } = string.Empty;
         public string? PaisOrigen { get; set; }
-        public bool Estado { get; set; } = true;
-        public DateTime FechaCreacion { get; set; } = DateTime.Now;
-        public DateTime FechaActualizacion { get; set; } = DateTime.Now;
+        public bool Estado { get; set; }
+        public DateTime FechaCreacion { get; set; }
+        public DateTime FechaActualizacion { get; set; }
     }
 }

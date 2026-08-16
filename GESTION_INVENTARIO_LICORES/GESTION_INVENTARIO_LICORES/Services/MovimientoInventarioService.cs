@@ -1,58 +1,187 @@
-﻿using Microsoft.Data.SqlClient;
-using System.Data;
+using GESTION_INVENTARIO_LICORES.DTOs.Response;
 using GESTION_INVENTARIO_LICORES.Interfaces;
-using GESTION_INVENTARIO_LICORES.DTOs;
+using Microsoft.Data.SqlClient;
+using System.Data;
 
 namespace GESTION_INVENTARIO_LICORES.Services
 {
     public class MovimientoInventarioService : IMovimientoInventarioService
     {
-        private readonly string? _conexion;
+        private const int PageSize = 10;
+        private readonly string conexion;
 
         public MovimientoInventarioService(IConfiguration configuration)
         {
-            _conexion = configuration.GetConnectionString("conexion");
+            conexion = configuration.GetConnectionString("conexion")
+                ?? throw new InvalidOperationException(
+                    "No se encontró la cadena de conexión 'conexion'."
+                );
         }
 
-        public List<KardexReporteDto> ConsultarKardex(long? idAlmacen = null, long? idProducto = null, string? tipoMovimiento = null)
+        public async Task<PaginatedRespDto<MovimientoInventarioRespDto>> ListAsync(
+            int pageNumber = 1,
+            string? codigoProducto = null,
+            string? nombreProducto = null,
+            long? idAlmacen = null,
+            string? numeroComprobante = null,
+            long? idTipoMovimiento = null,
+            string orden = "DESC"
+        )
         {
-            List<KardexReporteDto> lista = new List<KardexReporteDto>();
+            List<MovimientoInventarioRespDto> movimientos = new();
 
-            using (SqlConnection con = new SqlConnection(_conexion))
+            using (SqlConnection con = new SqlConnection(conexion))
             {
-                using (SqlCommand command = new SqlCommand("sp_consultar_kardex", con))
+                using (SqlCommand command = new SqlCommand("sp_MovimientoInventario_Listar", con))
                 {
                     command.CommandType = CommandType.StoredProcedure;
-
+                    command.Parameters.AddWithValue("@CodigoProducto", (object?)codigoProducto ?? DBNull.Value);
+                    command.Parameters.AddWithValue("@NombreProducto", (object?)nombreProducto ?? DBNull.Value);
                     command.Parameters.AddWithValue("@IdAlmacen", (object?)idAlmacen ?? DBNull.Value);
-                    command.Parameters.AddWithValue("@IdProducto", (object?)idProducto ?? DBNull.Value);
-                    command.Parameters.AddWithValue("@TipoMovimiento", (object?)tipoMovimiento ?? DBNull.Value);
+                    command.Parameters.AddWithValue("@NumeroComprobante", (object?)numeroComprobante ?? DBNull.Value);
+                    command.Parameters.AddWithValue("@IdTipoMovimiento", (object?)idTipoMovimiento ?? DBNull.Value);
+                    command.Parameters.AddWithValue("@Orden", orden);
 
-                    con.Open();
-                    using (SqlDataReader reader = command.ExecuteReader())
+                    await con.OpenAsync();
+
+                    using (SqlDataReader reader = await command.ExecuteReaderAsync())
                     {
-                        while (reader.Read())
+                        while (await reader.ReadAsync())
                         {
-                            lista.Add(new KardexReporteDto
+                            movimientos.Add(new MovimientoInventarioRespDto
                             {
-                                IdMovimiento = reader.GetInt64(reader.GetOrdinal("IdMovimiento")),
-                                FechaMovimiento = reader.GetDateTime(reader.GetOrdinal("FechaMovimiento")),
-                                Codigo = reader.GetString(reader.GetOrdinal("Codigo")),
-                                Producto = reader.GetString(reader.GetOrdinal("Producto")),
-                                Almacen = reader.GetString(reader.GetOrdinal("Almacen")),
-                                TipoMovimiento = reader.GetString(reader.GetOrdinal("TipoMovimiento")),
-                                Cantidad = reader.GetInt32(reader.GetOrdinal("Cantidad")),
-                                StockAnterior = reader.GetInt32(reader.GetOrdinal("StockAnterior")),
-                                StockPosterior = reader.GetInt32(reader.GetOrdinal("StockPosterior")),
-                                Motivo = reader.GetString(reader.GetOrdinal("Motivo")),
-                                Referencia = reader.IsDBNull(reader.GetOrdinal("Referencia")) ? null : reader.GetString(reader.GetOrdinal("Referencia")),
-                                UsuarioResponsable = reader.GetString(reader.GetOrdinal("UsuarioResponsable"))
+                                IdMovimiento = reader.GetInt64(0),
+
+                                Producto = new ProductoResumenRespDto
+                                {
+                                    IdProducto = reader.GetInt64(1),
+                                    Codigo = reader.GetString(2),
+                                    Nombre = reader.GetString(3)
+                                },
+
+                                Almacen = new AlmacenMovimientoRespDto
+                                {
+                                    IdAlmacen = reader.GetInt64(4),
+                                    Nombre = reader.GetString(5)
+                                },
+
+                                Usuario = new UsuarioResumenRespDto
+                                {
+                                    IdUsuario = reader.GetInt64(6),
+                                    Nombres = reader.GetString(7),
+                                    Apellidos = reader.GetString(8)
+                                },
+
+                                Compra = reader.IsDBNull(9)
+                                    ? null
+                                    : new CompraResumenRespDto
+                                    {
+                                        IdCompra = reader.GetInt64(9),
+                                        NumeroComprobante = reader.IsDBNull(10) ? string.Empty : reader.GetString(10)
+                                    },
+
+                                TipoMovimiento = new TipoMovimientoRespDto
+                                {
+                                    IdTipoMovimiento = reader.GetInt64(11),
+                                    Nombre = reader.GetString(12)
+                                },
+
+                                Cantidad = reader.GetInt32(13),
+                                StockAnterior = reader.GetInt32(14),
+                                StockPosterior = reader.GetInt32(15),
+                                Motivo = reader.GetString(16),
+                                Referencia = reader.IsDBNull(17) ? null : reader.GetString(17),
+                                FechaMovimiento = reader.GetDateTime(18)
                             });
                         }
                     }
                 }
             }
-            return lista;
+            int totalItems = movimientos.Count;
+
+            List<MovimientoInventarioRespDto> items = movimientos
+                .Skip((pageNumber - 1) * PageSize)
+                .Take(PageSize)
+                .ToList();
+
+            return new PaginatedRespDto<MovimientoInventarioRespDto>
+            {
+                Items = items,
+                PageNumber = pageNumber,
+                TotalItems = totalItems
+            };
+        }
+
+        public async Task<MovimientoInventarioRespDto?> GetByIdAsync(
+            long idMovimiento
+        )
+        {
+            using (SqlConnection con = new SqlConnection(conexion))
+            {
+                using (SqlCommand command =
+                    new SqlCommand("sp_MovimientoInventario_ObtenerPorId", con))
+                {
+                    command.CommandType = CommandType.StoredProcedure;
+
+                    command.Parameters.AddWithValue("@IdMovimiento", idMovimiento);
+
+                    await con.OpenAsync();
+
+                    using (SqlDataReader reader =
+                        await command.ExecuteReaderAsync())
+                    {
+                        if (await reader.ReadAsync())
+                        {
+                            return new MovimientoInventarioRespDto
+                            {
+                                IdMovimiento = reader.GetInt64(0),
+
+                                Producto = new ProductoResumenRespDto
+                                {
+                                    IdProducto = reader.GetInt64(1),
+                                    Codigo = reader.GetString(2),
+                                    Nombre = reader.GetString(3)
+                                },
+
+                                Almacen = new AlmacenMovimientoRespDto
+                                {
+                                    IdAlmacen = reader.GetInt64(4),
+                                    Nombre = reader.GetString(5)
+                                },
+
+                                Usuario = new UsuarioResumenRespDto
+                                {
+                                    IdUsuario = reader.GetInt64(6),
+                                    Nombres = reader.GetString(7),
+                                    Apellidos = reader.GetString(8)
+                                },
+
+                                Compra = reader.IsDBNull(9)
+                                    ? null
+                                    : new CompraResumenRespDto
+                                    {
+                                        IdCompra = reader.GetInt64(9),
+                                        NumeroComprobante = reader.IsDBNull(10) ? string.Empty : reader.GetString(10)
+                                    },
+
+                                TipoMovimiento = new TipoMovimientoRespDto
+                                {
+                                    IdTipoMovimiento = reader.GetInt64(11),
+                                    Nombre = reader.GetString(12)
+                                },
+
+                                Cantidad = reader.GetInt32(13),
+                                StockAnterior = reader.GetInt32(14),
+                                StockPosterior = reader.GetInt32(15),
+                                Motivo = reader.GetString(16),
+                                Referencia = reader.IsDBNull(17) ? null : reader.GetString(17),
+                                FechaMovimiento = reader.GetDateTime(18)
+                            };
+                        }
+                    }
+                }
+            }
+            return null;
         }
     }
 }

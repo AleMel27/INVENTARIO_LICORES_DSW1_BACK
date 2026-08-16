@@ -1,168 +1,201 @@
-﻿using Microsoft.Data.SqlClient;
-using System.Data;
+using GESTION_INVENTARIO_LICORES.DTOs.Request;
+using GESTION_INVENTARIO_LICORES.DTOs.Response;
 using GESTION_INVENTARIO_LICORES.Interfaces;
-using GESTION_INVENTARIO_LICORES.Models;
+using Microsoft.Data.SqlClient;
+using System.Data;
 
 namespace GESTION_INVENTARIO_LICORES.Services
 {
     public class CategoriaService : ICategoriaService
     {
-        private readonly string? _conexion;
+        private const int PageSize = 10;
+        private readonly string conexion;
 
         public CategoriaService(IConfiguration configuration)
         {
-            _conexion = configuration.GetConnectionString("conexion");
+            conexion = configuration.GetConnectionString("conexion")
+                ?? throw new InvalidOperationException(
+                    "No se encontró la cadena de conexión 'conexion'."
+                );
         }
 
-        public List<Categoria> List()
+        public async Task<PaginatedRespDto<CategoriaRespDto>> ListAsync(
+            int pageNumber = 1,
+            string? nombre = null,
+            bool? estado = true,
+            string orden = "DESC"
+        )
         {
-            List<Categoria> lista = new List<Categoria>();
+            List<CategoriaRespDto> categorias = new();
 
-            using (SqlConnection con = new SqlConnection(_conexion))
+            using (SqlConnection con = new SqlConnection(conexion))
             {
-                using (SqlCommand command = new SqlCommand("sp_listar_categorias", con))
+                using (SqlCommand command = new SqlCommand("sp_Categoria_Listar", con))
                 {
                     command.CommandType = CommandType.StoredProcedure;
-                    con.Open();
-                    using (SqlDataReader reader = command.ExecuteReader())
+                    command.Parameters.AddWithValue("@Nombre", (object?)nombre ?? DBNull.Value);
+                    command.Parameters.AddWithValue("@Estado", (object?)estado ?? DBNull.Value);
+                    command.Parameters.AddWithValue("@Orden", orden);
+
+                    await con.OpenAsync();
+
+                    using (SqlDataReader reader = await command.ExecuteReaderAsync())
                     {
-                        while (reader.Read())
+                        while (await reader.ReadAsync())
                         {
-                            lista.Add(new Categoria
+                            categorias.Add(new CategoriaRespDto
                             {
                                 IdCategoria = reader.GetInt64(0),
                                 Nombre = reader.GetString(1),
                                 Descripcion = reader.IsDBNull(2) ? null : reader.GetString(2),
-                                Estado = reader.GetBoolean(3),
-                                FechaCreacion = reader.GetDateTime(4),
-                                FechaActualizacion = reader.GetDateTime(5)
+                                Estado = reader.GetBoolean(3)
                             });
                         }
                     }
                 }
             }
-            return lista;
-        }
-        public Categoria GetCategoria(long idCategoria)
-        {
-            Categoria categoria = null;
+            int totalItems = categorias.Count;
 
-            using (SqlConnection con = new SqlConnection(_conexion))
+            List<CategoriaRespDto> items = categorias
+                .Skip((pageNumber - 1) * PageSize)
+                .Take(PageSize)
+                .ToList();
+
+            return new PaginatedRespDto<CategoriaRespDto>
             {
-                using (SqlCommand command = new SqlCommand("sp_buscar_categoria", con))
+                Items = items,
+                PageNumber = pageNumber,
+                TotalItems = totalItems
+            };
+        }
+
+        public async Task<CategoriaRespDto?> GetByIdAsync(
+            long idCategoria
+        )
+        {
+            using (SqlConnection con = new SqlConnection(conexion))
+            {
+                using (SqlCommand command =
+                    new SqlCommand("sp_Categoria_ObtenerPorId", con))
                 {
                     command.CommandType = CommandType.StoredProcedure;
+
                     command.Parameters.AddWithValue("@IdCategoria", idCategoria);
-                    con.Open();
-                    using (SqlDataReader reader = command.ExecuteReader())
+
+                    await con.OpenAsync();
+
+                    using (SqlDataReader reader =
+                        await command.ExecuteReaderAsync())
                     {
-                        if (reader.Read())
+                        if (await reader.ReadAsync())
                         {
-                            categoria = new Categoria
+                            return new CategoriaRespDto
                             {
                                 IdCategoria = reader.GetInt64(0),
                                 Nombre = reader.GetString(1),
                                 Descripcion = reader.IsDBNull(2) ? null : reader.GetString(2),
-                                Estado = reader.GetBoolean(3),
-                                FechaCreacion = reader.GetDateTime(4),
-                                FechaActualizacion = reader.GetDateTime(5)
+                                Estado = reader.GetBoolean(3)
                             };
                         }
                     }
                 }
             }
-            return categoria;
+            return null;
         }
-        public bool Insert(Categoria categoria)
+
+        public async Task<CategoriaRespDto?> CreateAsync(
+            CategoriaReqDto request
+        )
         {
-            bool resp = false;
-            using (SqlConnection con = new SqlConnection(_conexion))
+            using (SqlConnection con = new SqlConnection(conexion))
             {
-                con.Open();
-                SqlTransaction transaction = con.BeginTransaction();
-                try
+                using (SqlCommand command = new SqlCommand("sp_Categoria_Crear", con))
                 {
-                    using (SqlCommand command = new SqlCommand("sp_insert_categoria", con))
+                    command.CommandType = CommandType.StoredProcedure;
+                    command.Parameters.AddWithValue("@Nombre", (object?)request.Nombre ?? DBNull.Value);
+                    command.Parameters.AddWithValue("@Descripcion", (object?)request.Descripcion ?? DBNull.Value);
+
+                    await con.OpenAsync();
+
+                    object? resultado = await command.ExecuteScalarAsync();
+
+                    if (resultado is null || resultado == DBNull.Value)
                     {
-                        command.Transaction = transaction;
-                        command.CommandType = CommandType.StoredProcedure;
-                        command.Parameters.AddWithValue("@Nombre", categoria.Nombre);
-                        command.Parameters.AddWithValue("@Descripcion", (object)categoria.Descripcion ?? DBNull.Value);
-
-                        var id = command.ExecuteScalar();
-                        if (id != null)
-                        {
-                            categoria.IdCategoria = Convert.ToInt64(id);
-                            resp = true;
-                        }
-
-                        transaction.Commit();
+                        return null;
                     }
-                }
-                catch (Exception)
-                {
-                    transaction.Rollback();
-                    throw;
+
+                    long idCategoria = Convert.ToInt64(resultado);
+
+                    return await GetByIdAsync(idCategoria);
                 }
             }
-            return resp;
         }
-        public bool Update(Categoria categoria)
-        {
-            bool resp = false;
-            using (SqlConnection con = new SqlConnection(_conexion))
-            {
-                con.Open();
-                SqlTransaction transaction = con.BeginTransaction();
-                try
-                {
-                    using (SqlCommand command = new SqlCommand("sp_update_categoria", con))
-                    {
-                        command.Transaction = transaction;
-                        command.CommandType = CommandType.StoredProcedure;
-                        command.Parameters.AddWithValue("@IdCategoria", categoria.IdCategoria);
-                        command.Parameters.AddWithValue("@Nombre", categoria.Nombre);
-                        command.Parameters.AddWithValue("@Descripcion", (object)categoria.Descripcion ?? DBNull.Value);
-                        command.Parameters.AddWithValue("@Estado", categoria.Estado);
 
-                        resp = command.ExecuteNonQuery() > 0;
-                        transaction.Commit();
-                    }
-                }
-                catch (Exception)
+        public async Task<CategoriaRespDto?> UpdateAsync(
+            long idCategoria,
+            CategoriaUpdateReqDto request
+        )
+        {
+            using (SqlConnection con = new SqlConnection(conexion))
+            {
+                using (SqlCommand command =
+                    new SqlCommand("sp_Categoria_Actualizar", con))
                 {
-                    transaction.Rollback();
-                    throw;
+                    command.CommandType = CommandType.StoredProcedure;
+
+                    command.Parameters.AddWithValue(
+                        "@IdCategoria",
+                        idCategoria
+                    );
+
+                    command.Parameters.AddWithValue(
+                        "@Nombre",
+                        request.Nombre
+                    );
+
+                    command.Parameters.AddWithValue(
+                        "@Descripcion",
+                        (object?)request.Descripcion ?? DBNull.Value
+                    );
+
+                    await con.OpenAsync();
+
+                    await command.ExecuteNonQueryAsync();
                 }
             }
-            return resp;
-        }
-        public bool Delete(long idCategoria)
-        {
-            bool resp = false;
-            using (SqlConnection con = new SqlConnection(_conexion))
-            {
-                con.Open();
-                SqlTransaction transaction = con.BeginTransaction();
-                try
-                {
-                    using (SqlCommand command = new SqlCommand("sp_delete_categoria", con))
-                    {
-                        command.Transaction = transaction;
-                        command.CommandType = CommandType.StoredProcedure;
-                        command.Parameters.AddWithValue("@IdCategoria", idCategoria);
 
-                        resp = command.ExecuteNonQuery() > 0;
-                        transaction.Commit();
-                    }
-                }
-                catch (Exception)
+            return await GetByIdAsync(idCategoria);
+        }
+
+        public async Task<bool> ChangeStatusAsync(
+            long idCategoria,
+            bool estado
+        )
+        {
+            using (SqlConnection con = new SqlConnection(conexion))
+            {
+                using (SqlCommand command =
+                    new SqlCommand("sp_Categoria_CambiarEstado", con))
                 {
-                    transaction.Rollback();
-                    throw;
+                    command.CommandType = CommandType.StoredProcedure;
+
+                    command.Parameters.AddWithValue(
+                        "@IdCategoria",
+                        idCategoria
+                    );
+
+                    command.Parameters.AddWithValue(
+                        "@Estado",
+                        estado
+                    );
+
+                    await con.OpenAsync();
+
+                    await command.ExecuteNonQueryAsync();
+
+                    return true;
                 }
             }
-            return resp;
         }
     }
 }

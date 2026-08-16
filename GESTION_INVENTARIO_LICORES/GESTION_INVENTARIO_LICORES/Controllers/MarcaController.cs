@@ -1,7 +1,9 @@
-﻿using Microsoft.AspNetCore.Mvc;
-using Microsoft.Data.SqlClient;
+using GESTION_INVENTARIO_LICORES.DTOs.Request;
+using GESTION_INVENTARIO_LICORES.DTOs.Response;
+using GESTION_INVENTARIO_LICORES.Enums;
 using GESTION_INVENTARIO_LICORES.Interfaces;
-using GESTION_INVENTARIO_LICORES.Models;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.Data.SqlClient;
 
 namespace GESTION_INVENTARIO_LICORES.Controllers
 {
@@ -11,160 +13,432 @@ namespace GESTION_INVENTARIO_LICORES.Controllers
     {
         private readonly IMarcaService _service;
 
-        public MarcaController(IMarcaService service)
+        public MarcaController(
+            IMarcaService service
+        )
         {
             _service = service;
         }
 
         [HttpGet]
-        public async Task<IActionResult> Get()
+        public async Task<IActionResult> Get(
+            int pageNumber = 1,
+            string? nombre = null,
+            string? paisOrigen = null,
+            EstadoFiltro estado = EstadoFiltro.Activos,
+            string orden = "DESC"
+        )
         {
-            var lista = _service.List();
-            if (lista.Count > 0)
+            if (pageNumber <= 0)
             {
-                return Ok(new Response<List<Marca>>
-                {
-                    Success = true,
-                    Message = "Marcas obtenidas con éxito.",
-                    Data = lista
-                });
+                return BadRequest(
+                    new ProblemDetails
+                    {
+                        Status = StatusCodes.Status400BadRequest,
+                        Title = "Solicitud inválida",
+                        Detail = "El número de página debe ser mayor a 0."
+                    }
+                );
             }
-            return BadRequest(new Response<object>
+
+            orden = orden.ToUpperInvariant();
+
+            if (orden != "ASC" && orden != "DESC")
             {
-                Success = false,
-                Message = "No se encontraron marcas registradas."
-            });
+                return BadRequest(
+                    new ProblemDetails
+                    {
+                        Status = StatusCodes.Status400BadRequest,
+                        Title = "Solicitud inválida",
+                        Detail = "El orden solamente puede ser ASC o DESC."
+                    }
+                );
+            }
+
+            try
+            {
+                bool? estadoFiltro = estado switch
+                {
+                    EstadoFiltro.Activos => true,
+                    EstadoFiltro.Inactivos => false,
+                    EstadoFiltro.Todos => null,
+                    _ => true
+                };
+
+                PaginatedRespDto<MarcaRespDto> resultado =
+                    await _service.ListAsync(
+                        pageNumber,
+                        nombre,
+                        paisOrigen,
+                        estadoFiltro,
+                        orden
+                    );
+
+                return Ok(resultado);
+            }
+            catch (SqlException)
+            {
+                return StatusCode(
+                    StatusCodes.Status500InternalServerError,
+                    new ProblemDetails
+                    {
+                        Status = StatusCodes.Status500InternalServerError,
+                        Title = "Error interno",
+                        Detail = "Ocurrió un error al obtener las marcas."
+                    }
+                );
+            }
+            catch (Exception)
+            {
+                return StatusCode(
+                    StatusCodes.Status500InternalServerError,
+                    new ProblemDetails
+                    {
+                        Status = StatusCodes.Status500InternalServerError,
+                        Title = "Error interno",
+                        Detail = "Ocurrió un error interno del servidor."
+                    }
+                );
+            }
         }
 
         [HttpGet("{idMarca}")]
-        public async Task<IActionResult> GetById(long idMarca)
+        public async Task<IActionResult> GetById(
+            long idMarca
+        )
         {
-            var marca = _service.GetMarca(idMarca);
-            if (marca == null)
+            if (idMarca <= 0)
             {
-                return NotFound(new Response<object>
-                {
-                    Success = false,
-                    Message = "La marca solicitada no existe."
-                });
+                return BadRequest(
+                    new ProblemDetails
+                    {
+                        Status = StatusCodes.Status400BadRequest,
+                        Title = "Solicitud inválida",
+                        Detail = "El IdMarca debe ser mayor a 0."
+                    }
+                );
             }
-            return Ok(new Response<Marca>
+
+            try
             {
-                Success = true,
-                Message = "Marca encontrada.",
-                Data = marca
-            });
+                MarcaRespDto? marca =
+                    await _service.GetByIdAsync(idMarca);
+
+                if (marca is null)
+                {
+                    return NotFound(
+                        new ProblemDetails
+                        {
+                            Status = StatusCodes.Status404NotFound,
+                            Title = "Marca no encontrada",
+                            Detail = "La marca solicitada no existe."
+                        }
+                    );
+                }
+
+                return Ok(marca);
+            }
+            catch (SqlException)
+            {
+                return StatusCode(
+                    StatusCodes.Status500InternalServerError,
+                    new ProblemDetails
+                    {
+                        Status = StatusCodes.Status500InternalServerError,
+                        Title = "Error interno",
+                        Detail = "Ocurrió un error al obtener la marca."
+                    }
+                );
+            }
+            catch (Exception)
+            {
+                return StatusCode(
+                    StatusCodes.Status500InternalServerError,
+                    new ProblemDetails
+                    {
+                        Status = StatusCodes.Status500InternalServerError,
+                        Title = "Error interno",
+                        Detail = "Ocurrió un error interno del servidor."
+                    }
+                );
+            }
         }
 
         [HttpPost]
-        public async Task<IActionResult> Post([FromBody] Marca marca)
+        public async Task<IActionResult> Post(
+            [FromBody] MarcaReqDto request
+        )
         {
             try
             {
-                var resp = _service.Insert(marca);
-                if (resp)
+                MarcaRespDto? marca =
+                    await _service.CreateAsync(request);
+
+                if (marca is null)
                 {
-                    return Created("", new Response<Marca>
-                    {
-                        Success = true,
-                        Message = "Marca registrada correctamente.",
-                        Data = marca
-                    });
+                    return BadRequest(
+                        new ProblemDetails
+                        {
+                            Status = StatusCodes.Status400BadRequest,
+                            Title = "Solicitud inválida",
+                            Detail = "No se pudo registrar la marca."
+                        }
+                    );
                 }
-                return BadRequest(new Response<object>
-                {
-                    Success = false,
-                    Message = "Hubo un error al registrar la marca."
-                });
+
+                return CreatedAtAction(
+                    nameof(GetById),
+                    new
+                    {
+                        idMarca = marca.IdMarca
+                    },
+                    marca
+                );
             }
             catch (SqlException ex)
+                when (ex.Number == 2601 ||
+                      ex.Number == 2627)
             {
-                return BadRequest(new Response<object>
-                {
-                    Success = false,
-                    Message = ex.Message
-                });
+                return Conflict(
+                    new ProblemDetails
+                    {
+                        Status = StatusCodes.Status409Conflict,
+                        Title = "Conflicto",
+                        Detail = "Ya existe una marca con ese nombre."
+                    }
+                );
+            }
+            catch (SqlException)
+            {
+                return StatusCode(
+                    StatusCodes.Status500InternalServerError,
+                    new ProblemDetails
+                    {
+                        Status = StatusCodes.Status500InternalServerError,
+                        Title = "Error interno",
+                        Detail = "Ocurrió un error al registrar la marca."
+                    }
+                );
+            }
+            catch (Exception)
+            {
+                return StatusCode(
+                    StatusCodes.Status500InternalServerError,
+                    new ProblemDetails
+                    {
+                        Status = StatusCodes.Status500InternalServerError,
+                        Title = "Error interno",
+                        Detail = "Ocurrió un error interno del servidor."
+                    }
+                );
             }
         }
 
-        [HttpPut]
-        public async Task<IActionResult> Put([FromBody] Marca marca)
+        [HttpPut("{idMarca}")]
+        public async Task<IActionResult> Put(
+            long idMarca,
+            [FromBody] MarcaUpdateReqDto request
+        )
         {
-            var existe = _service.GetMarca(marca.IdMarca);
-            if (existe == null)
+            if (idMarca <= 0)
             {
-                return NotFound(new Response<object>
-                {
-                    Success = false,
-                    Message = "No se encontró la marca para actualizar."
-                });
+                return BadRequest(
+                    new ProblemDetails
+                    {
+                        Status = StatusCodes.Status400BadRequest,
+                        Title = "Solicitud inválida",
+                        Detail = "El IdMarca debe ser mayor a 0."
+                    }
+                );
             }
+
             try
             {
-                var resp = _service.Update(marca);
-                if (resp)
+                MarcaRespDto? existente =
+                    await _service.GetByIdAsync(idMarca);
+
+                if (existente is null)
                 {
-                    return Ok(new Response<Marca>
-                    {
-                        Success = true,
-                        Message = "Se actualizó la marca correctamente.",
-                        Data = marca
-                    });
+                    return NotFound(
+                        new ProblemDetails
+                        {
+                            Status = StatusCodes.Status404NotFound,
+                            Title = "Marca no encontrada",
+                            Detail = "No se encontró la marca para actualizar."
+                        }
+                    );
                 }
-                return BadRequest(new Response<object>
+
+                MarcaRespDto? actualizada =
+                    await _service.UpdateAsync(
+                        idMarca,
+                        request
+                    );
+
+                if (actualizada is null)
                 {
-                    Success = false,
-                    Message = "Hubo un error al actualizar la marca."
-                });
+                    return StatusCode(
+                        StatusCodes.Status500InternalServerError,
+                        new ProblemDetails
+                        {
+                            Status = StatusCodes.Status500InternalServerError,
+                            Title = "Error interno",
+                            Detail = "No se pudo obtener la marca actualizada."
+                        }
+                    );
+                }
+
+                return Ok(actualizada);
             }
             catch (SqlException ex)
+                when (ex.Number == 2601 ||
+                      ex.Number == 2627)
             {
-                return BadRequest(new Response<object>
-                {
-                    Success = false,
-                    Message = ex.Message
-                });
+                return Conflict(
+                    new ProblemDetails
+                    {
+                        Status = StatusCodes.Status409Conflict,
+                        Title = "Conflicto",
+                        Detail = "Ya existe una marca con ese nombre."
+                    }
+                );
+            }
+            catch (SqlException)
+            {
+                return StatusCode(
+                    StatusCodes.Status500InternalServerError,
+                    new ProblemDetails
+                    {
+                        Status = StatusCodes.Status500InternalServerError,
+                        Title = "Error interno",
+                        Detail = "Ocurrió un error al actualizar la marca."
+                    }
+                );
+            }
+            catch (Exception)
+            {
+                return StatusCode(
+                    StatusCodes.Status500InternalServerError,
+                    new ProblemDetails
+                    {
+                        Status = StatusCodes.Status500InternalServerError,
+                        Title = "Error interno",
+                        Detail = "Ocurrió un error interno del servidor."
+                    }
+                );
             }
         }
 
-        [HttpDelete("{idMarca}")]
-        public async Task<IActionResult> Delete(long idMarca)
+        [HttpPatch("{idMarca}/estado")]
+        public async Task<IActionResult> ChangeStatus(
+            long idMarca,
+            [FromQuery] bool estado
+        )
         {
-            var marca = _service.GetMarca(idMarca);
-            if (marca == null)
+            if (idMarca <= 0)
             {
-                return NotFound(new Response<object>
-                {
-                    Success = false,
-                    Message = "No se encontró la marca para dar de baja."
-                });
+                return BadRequest(
+                    new ProblemDetails
+                    {
+                        Status = StatusCodes.Status400BadRequest,
+                        Title = "Solicitud inválida",
+                        Detail = "El IdMarca debe ser mayor a 0."
+                    }
+                );
             }
+
             try
             {
-                var resp = _service.Delete(idMarca);
-                if (resp)
+                MarcaRespDto? marca =
+                    await _service.GetByIdAsync(idMarca);
+
+                if (marca is null)
                 {
-                    marca.Estado = false;
-                    return Ok(new Response<Marca>
-                    {
-                        Success = true,
-                        Message = "Se dio de baja la marca correctamente.",
-                        Data = marca
-                    });
+                    return NotFound(
+                        new ProblemDetails
+                        {
+                            Status = StatusCodes.Status404NotFound,
+                            Title = "Marca no encontrada",
+                            Detail = "No se encontró la marca solicitada."
+                        }
+                    );
                 }
-                return BadRequest(new Response<object>
+
+                if (marca.Estado == estado)
                 {
-                    Success = false,
-                    Message = "Hubo un error al dar de baja la marca."
-                });
+                    string mensajeConflicto = estado
+                        ? "La marca ya se encuentra activa."
+                        : "La marca ya se encuentra inactiva.";
+
+                    return Conflict(
+                        new ProblemDetails
+                        {
+                            Status = StatusCodes.Status409Conflict,
+                            Title = "Conflicto",
+                            Detail = mensajeConflicto
+                        }
+                    );
+                }
+
+                bool cambiado =
+                    await _service.ChangeStatusAsync(
+                        idMarca,
+                        estado
+                    );
+
+                if (!cambiado)
+                {
+                    return BadRequest(
+                        new ProblemDetails
+                        {
+                            Status = StatusCodes.Status400BadRequest,
+                            Title = "Solicitud inválida",
+                            Detail = "No se pudo cambiar el estado de la marca."
+                        }
+                    );
+                }
+
+                MarcaRespDto? actualizada =
+                    await _service.GetByIdAsync(idMarca);
+
+                if (actualizada is null)
+                {
+                    return StatusCode(
+                        StatusCodes.Status500InternalServerError,
+                        new ProblemDetails
+                        {
+                            Status = StatusCodes.Status500InternalServerError,
+                            Title = "Error interno",
+                            Detail = "No se pudo obtener la marca actualizada."
+                        }
+                    );
+                }
+
+                return Ok(actualizada);
             }
-            catch (SqlException ex)
+            catch (SqlException)
             {
-                return BadRequest(new Response<object>
-                {
-                    Success = false,
-                    Message = ex.Message
-                });
+                return StatusCode(
+                    StatusCodes.Status500InternalServerError,
+                    new ProblemDetails
+                    {
+                        Status = StatusCodes.Status500InternalServerError,
+                        Title = "Error interno",
+                        Detail = "Ocurrió un error al cambiar el estado de la marca."
+                    }
+                );
+            }
+            catch (Exception)
+            {
+                return StatusCode(
+                    StatusCodes.Status500InternalServerError,
+                    new ProblemDetails
+                    {
+                        Status = StatusCodes.Status500InternalServerError,
+                        Title = "Error interno",
+                        Detail = "Ocurrió un error interno del servidor."
+                    }
+                );
             }
         }
     }

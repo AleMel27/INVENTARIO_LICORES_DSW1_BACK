@@ -1,95 +1,190 @@
-﻿using Microsoft.Data.SqlClient;
-using System.Data;
+using GESTION_INVENTARIO_LICORES.DTOs.Request;
+using GESTION_INVENTARIO_LICORES.DTOs.Response;
 using GESTION_INVENTARIO_LICORES.Interfaces;
-using GESTION_INVENTARIO_LICORES.Models;
-using GESTION_INVENTARIO_LICORES.DTOs;
+using Microsoft.Data.SqlClient;
+using System.Data;
 
 namespace GESTION_INVENTARIO_LICORES.Services
 {
     public class InventarioService : IInventarioService
     {
-        private readonly string? _conexion;
+        private const int PageSize = 10;
+        private readonly string conexion;
 
         public InventarioService(IConfiguration configuration)
         {
-            _conexion = configuration.GetConnectionString("conexion");
+            conexion = configuration.GetConnectionString("conexion")
+                ?? throw new InvalidOperationException(
+                    "No se encontró la cadena de conexión 'conexion'."
+                );
         }
 
-        public List<Inventario> List()
+        public async Task<PaginatedRespDto<InventarioRespDto>> ListAsync(
+            int pageNumber = 1,
+            string? nombreProducto = null,
+            string? codigoProducto = null,
+            long? idAlmacen = null,
+            string orden = "DESC"
+        )
         {
-            List<Inventario> lista = new List<Inventario>();
+            List<InventarioRespDto> inventarios = new();
 
-            using (SqlConnection con = new SqlConnection(_conexion))
+            using (SqlConnection con = new SqlConnection(conexion))
             {
-                using (SqlCommand command = new SqlCommand("sp_listar_inventario", con))
+                using (SqlCommand command = new SqlCommand("sp_Inventario_Listar", con))
                 {
                     command.CommandType = CommandType.StoredProcedure;
-                    con.Open();
-                    using (SqlDataReader reader = command.ExecuteReader())
-                    {
-                        while (reader.Read())
-                        {
-                            lista.Add(new Inventario
-                            {
-                                IdInventario = reader.GetInt64(reader.GetOrdinal("IdInventario")),
-                                IdProducto = reader.GetInt64(reader.GetOrdinal("IdProducto")),
-                                IdAlmacen = reader.GetInt64(reader.GetOrdinal("IdAlmacen")),
-                                StockActual = reader.GetInt32(reader.GetOrdinal("StockActual")),
-                                FechaActualizacion = reader.GetDateTime(reader.GetOrdinal("FechaActualizacion")),
+                    command.Parameters.AddWithValue("@NombreProducto", (object?)nombreProducto ?? DBNull.Value);
+                    command.Parameters.AddWithValue("@CodigoProducto", (object?)codigoProducto ?? DBNull.Value);
+                    command.Parameters.AddWithValue("@IdAlmacen", (object?)idAlmacen ?? DBNull.Value);
+                    command.Parameters.AddWithValue("@Orden", orden);
 
-                                Producto = new Producto
+                    await con.OpenAsync();
+
+                    using (SqlDataReader reader = await command.ExecuteReaderAsync())
+                    {
+                        while (await reader.ReadAsync())
+                        {
+                            inventarios.Add(new InventarioRespDto
+                            {
+                                IdInventario = reader.GetInt64(0),
+
+                                Producto = new ProductoResumenRespDto
                                 {
-                                    IdProducto = reader.GetInt64(reader.GetOrdinal("IdProducto")),
-                                    Codigo = reader.GetString(reader.GetOrdinal("CodigoProducto")),
-                                    Nombre = reader.GetString(reader.GetOrdinal("Producto"))
+                                    IdProducto = reader.GetInt64(1),
+                                    Codigo = reader.GetString(2),
+                                    Nombre = reader.GetString(3)
                                 },
-                                Almacen = new Almacen
+
+                                Almacen = new AlmacenInventarioRespDto
                                 {
-                                    IdAlmacen = reader.GetInt64(reader.GetOrdinal("IdAlmacen")),
-                                    Nombre = reader.GetString(reader.GetOrdinal("Almacen"))
-                                }
+                                    IdAlmacen = reader.GetInt64(4),
+                                    Nombre = reader.GetString(5),
+                                    Ubicacion = reader.GetString(6)
+                                },
+
+                                StockActual = reader.GetInt32(7)
                             });
                         }
                     }
                 }
             }
-            return lista;
+            int totalItems = inventarios.Count;
+
+            List<InventarioRespDto> items = inventarios
+                .Skip((pageNumber - 1) * PageSize)
+                .Take(PageSize)
+                .ToList();
+
+            return new PaginatedRespDto<InventarioRespDto>
+            {
+                Items = items,
+                PageNumber = pageNumber,
+                TotalItems = totalItems
+            };
         }
 
-        public bool AjustarInventario(InventarioDto ajuste)
+        public async Task<InventarioRespDto?> GetByIdAsync(
+            long idInventario
+        )
         {
-            bool resp = false;
-            using (SqlConnection con = new SqlConnection(_conexion))
+            using (SqlConnection con = new SqlConnection(conexion))
             {
-                con.Open();
-                SqlTransaction transaction = con.BeginTransaction();
-                try
+                using (SqlCommand command =
+                    new SqlCommand("sp_Inventario_ObtenerPorId", con))
                 {
-                    using (SqlCommand command = new SqlCommand("sp_ajustar_inventario_manual", con))
+                    command.CommandType = CommandType.StoredProcedure;
+
+                    command.Parameters.AddWithValue("@IdInventario", idInventario);
+
+                    await con.OpenAsync();
+
+                    using (SqlDataReader reader =
+                        await command.ExecuteReaderAsync())
                     {
-                        command.Transaction = transaction;
-                        command.CommandType = CommandType.StoredProcedure;
+                        if (await reader.ReadAsync())
+                        {
+                            return new InventarioRespDto
+                            {
+                                IdInventario = reader.GetInt64(0),
 
-                        command.Parameters.AddWithValue("@IdProducto", ajuste.IdProducto);
-                        command.Parameters.AddWithValue("@IdAlmacen", ajuste.IdAlmacen);
-                        command.Parameters.AddWithValue("@IdUsuario", ajuste.IdUsuario);
-                        command.Parameters.AddWithValue("@Cantidad", ajuste.Cantidad);
-                        command.Parameters.AddWithValue("@TipoAjuste", ajuste.TipoAjuste);
-                        command.Parameters.AddWithValue("@Motivo", ajuste.Motivo);
+                                Producto = new ProductoResumenRespDto
+                                {
+                                    IdProducto = reader.GetInt64(1),
+                                    Codigo = reader.GetString(2),
+                                    Nombre = reader.GetString(3)
+                                },
 
-                        command.ExecuteNonQuery();
-                        resp = true;
+                                Almacen = new AlmacenInventarioRespDto
+                                {
+                                    IdAlmacen = reader.GetInt64(4),
+                                    Nombre = reader.GetString(5),
+                                    Ubicacion = reader.GetString(6)
+                                },
 
-                        transaction.Commit();
+                                StockActual = reader.GetInt32(7)
+                            };
+                        }
                     }
                 }
-                catch (Exception)
+            }
+            return null;
+        }
+
+        public async Task<InventarioRespDto?> CreateAsync(
+            InventarioReqDto request
+        )
+        {
+            using (SqlConnection con = new SqlConnection(conexion))
+            {
+                using (SqlCommand command = new SqlCommand("sp_Inventario_Crear", con))
                 {
-                    transaction.Rollback();
-                    throw;
+                    command.CommandType = CommandType.StoredProcedure;
+                    command.Parameters.AddWithValue("@IdProducto", request.IdProducto);
+                    command.Parameters.AddWithValue("@IdAlmacen", request.IdAlmacen);
+
+                    await con.OpenAsync();
+
+                    object? resultado = await command.ExecuteScalarAsync();
+
+                    if (resultado is null || resultado == DBNull.Value)
+                    {
+                        return null;
+                    }
+
+                    long idInventario = Convert.ToInt64(resultado);
+
+                    return await GetByIdAsync(idInventario);
                 }
             }
-            return resp;
+        }
+
+        public async Task<bool> AdjustStockAsync(
+            long idInventario,
+            AjusteInventarioReqDto request
+        )
+        {
+            using (SqlConnection con = new SqlConnection(conexion))
+            {
+                using (SqlCommand command = new SqlCommand("sp_Inventario_AjustarStock", con))
+                {
+                    command.CommandType = CommandType.StoredProcedure;
+                    command.Parameters.AddWithValue("@IdInventario", idInventario);
+                    command.Parameters.AddWithValue("@IdUsuario", request.IdUsuario);
+                    command.Parameters.AddWithValue("@IdTipoMovimiento", request.IdTipoMovimiento);
+                    command.Parameters.AddWithValue("@Cantidad", request.Cantidad);
+                    command.Parameters.AddWithValue("@Motivo", request.Motivo);
+                    command.Parameters.AddWithValue("@Referencia", (object?)request.Referencia ?? DBNull.Value);
+
+                    await con.OpenAsync();
+
+                    using (SqlDataReader reader =
+                        await command.ExecuteReaderAsync())
+                    {
+                        return await reader.ReadAsync();
+                    }
+                }
+            }
         }
     }
 }

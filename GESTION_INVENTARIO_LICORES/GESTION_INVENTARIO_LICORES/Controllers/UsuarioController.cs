@@ -1,7 +1,10 @@
-﻿using Microsoft.AspNetCore.Mvc;
-using Microsoft.Data.SqlClient;
+using GESTION_INVENTARIO_LICORES.DTOs.Request;
+using GESTION_INVENTARIO_LICORES.DTOs.Response;
+using GESTION_INVENTARIO_LICORES.Enums;
 using GESTION_INVENTARIO_LICORES.Interfaces;
-using GESTION_INVENTARIO_LICORES.Models;
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.Data.SqlClient;
 
 namespace GESTION_INVENTARIO_LICORES.Controllers
 {
@@ -11,210 +14,472 @@ namespace GESTION_INVENTARIO_LICORES.Controllers
     {
         private readonly IUsuarioService _service;
 
-        public UsuarioController(IUsuarioService service)
+        public UsuarioController(
+            IUsuarioService service
+        )
         {
             _service = service;
         }
 
         [HttpGet]
-        public async Task<IActionResult> Get()
+        public async Task<IActionResult> Get(
+            int pageNumber = 1,
+            string? nombres = null,
+            string? apellidos = null,
+            long? idRol = null,
+            EstadoFiltro estado = EstadoFiltro.Activos,
+            string orden = "DESC"
+        )
         {
-            var lista = _service.List();
-            if (lista.Count > 0)
+            if (pageNumber <= 0)
             {
-                return Ok(new Response<List<Usuario>>
-                {
-                    Success = true,
-                    Message = "Usuarios obtenidos con éxito.",
-                    Data = lista
-                });
+                return BadRequest(
+                    new ProblemDetails
+                    {
+                        Status = StatusCodes.Status400BadRequest,
+                        Title = "Solicitud inválida",
+                        Detail = "El número de página debe ser mayor a 0."
+                    }
+                );
             }
-            return BadRequest(new Response<object>
+
+            if (idRol.HasValue && idRol.Value <= 0)
             {
-                Success = false,
-                Message = "No se encontraron usuarios registrados."
-            });
+                return BadRequest(
+                    new ProblemDetails
+                    {
+                        Status = StatusCodes.Status400BadRequest,
+                        Title = "Solicitud inválida",
+                        Detail = "El IdRol debe ser mayor a 0."
+                    }
+                );
+            }
+
+            orden = orden.ToUpperInvariant();
+
+            if (orden != "ASC" && orden != "DESC")
+            {
+                return BadRequest(
+                    new ProblemDetails
+                    {
+                        Status = StatusCodes.Status400BadRequest,
+                        Title = "Solicitud inválida",
+                        Detail = "El orden solamente puede ser ASC o DESC."
+                    }
+                );
+            }
+
+            try
+            {
+                bool? estadoFiltro = estado switch
+                {
+                    EstadoFiltro.Activos => true,
+                    EstadoFiltro.Inactivos => false,
+                    EstadoFiltro.Todos => null,
+                    _ => true
+                };
+
+                PaginatedRespDto<UsuarioRespDto> resultado =
+                    await _service.ListAsync(
+                        pageNumber,
+                        nombres,
+                        apellidos,
+                        idRol,
+                        estadoFiltro,
+                        orden
+                    );
+
+                return Ok(resultado);
+            }
+            catch (SqlException)
+            {
+                return StatusCode(
+                    StatusCodes.Status500InternalServerError,
+                    new ProblemDetails
+                    {
+                        Status = StatusCodes.Status500InternalServerError,
+                        Title = "Error interno",
+                        Detail = "Ocurrió un error al obtener los usuarios."
+                    }
+                );
+            }
+            catch (Exception)
+            {
+                return StatusCode(
+                    StatusCodes.Status500InternalServerError,
+                    new ProblemDetails
+                    {
+                        Status = StatusCodes.Status500InternalServerError,
+                        Title = "Error interno",
+                        Detail = "Ocurrió un error interno del servidor."
+                    }
+                );
+            }
         }
 
         [HttpGet("{idUsuario}")]
-        public async Task<IActionResult> GetById(long idUsuario)
+        public async Task<IActionResult> GetById(
+            long idUsuario
+        )
         {
-            var usuario = _service.GetUsuario(idUsuario);
-            if (usuario == null)
+            if (idUsuario <= 0)
             {
-                return NotFound(new Response<object>
-                {
-                    Success = false,
-                    Message = "El usuario solicitado no existe."
-                });
+                return BadRequest(
+                    new ProblemDetails
+                    {
+                        Status = StatusCodes.Status400BadRequest,
+                        Title = "Solicitud inválida",
+                        Detail = "El IdUsuario debe ser mayor a 0."
+                    }
+                );
             }
-            return Ok(new Response<Usuario>
+
+            try
             {
-                Success = true,
-                Message = "Usuario encontrado.",
-                Data = usuario
-            });
+                UsuarioRespDto? usuario =
+                    await _service.GetByIdAsync(idUsuario);
+
+                if (usuario is null)
+                {
+                    return NotFound(
+                        new ProblemDetails
+                        {
+                            Status = StatusCodes.Status404NotFound,
+                            Title = "Usuario no encontrado",
+                            Detail = "El usuario solicitado no existe."
+                        }
+                    );
+                }
+
+                return Ok(usuario);
+            }
+            catch (SqlException)
+            {
+                return StatusCode(
+                    StatusCodes.Status500InternalServerError,
+                    new ProblemDetails
+                    {
+                        Status = StatusCodes.Status500InternalServerError,
+                        Title = "Error interno",
+                        Detail = "Ocurrió un error al obtener el usuario."
+                    }
+                );
+            }
+            catch (Exception)
+            {
+                return StatusCode(
+                    StatusCodes.Status500InternalServerError,
+                    new ProblemDetails
+                    {
+                        Status = StatusCodes.Status500InternalServerError,
+                        Title = "Error interno",
+                        Detail = "Ocurrió un error interno del servidor."
+                    }
+                );
+            }
         }
 
         [HttpPost]
-        public async Task<IActionResult> Post([FromBody] Usuario usuario)
+        [Authorize(Roles = "ADMIN")]
+        public async Task<IActionResult> Post(
+            [FromBody] UsuarioReqDto request
+        )
         {
             try
             {
-                var resp = _service.Insert(usuario);
-                if (resp)
+                UsuarioRespDto? usuario =
+                    await _service.CreateAsync(request);
+
+                if (usuario is null)
                 {
-                    return Created("", new Response<Usuario>
-                    {
-                        Success = true,
-                        Message = "Usuario registrado correctamente.",
-                        Data = usuario
-                    });
+                    return BadRequest(
+                        new ProblemDetails
+                        {
+                            Status = StatusCodes.Status400BadRequest,
+                            Title = "Solicitud inválida",
+                            Detail = "No se pudo registrar el usuario."
+                        }
+                    );
                 }
-                return BadRequest(new Response<object>
-                {
-                    Success = false,
-                    Message = "Hubo un error al registrar el usuario."
-                });
+
+                return CreatedAtAction(
+                    nameof(GetById),
+                    new
+                    {
+                        idUsuario = usuario.IdUsuario
+                    },
+                    usuario
+                );
             }
             catch (SqlException ex)
+                when (ex.Number == 2601 ||
+                      ex.Number == 2627)
             {
-                return BadRequest(new Response<object>
-                {
-                    Success = false,
-                    Message = ex.Message
-                });
+                return Conflict(
+                    new ProblemDetails
+                    {
+                        Status = StatusCodes.Status409Conflict,
+                        Title = "Conflicto",
+                        Detail = "Ya existe un usuario registrado con ese correo."
+                    }
+                );
+            }
+            catch (SqlException ex)
+                when (ex.Number == 547)
+            {
+                return BadRequest(
+                    new ProblemDetails
+                    {
+                        Status = StatusCodes.Status400BadRequest,
+                        Title = "Solicitud inválida",
+                        Detail = "El rol indicado no es válido."
+                    }
+                );
+            }
+            catch (SqlException)
+            {
+                return StatusCode(
+                    StatusCodes.Status500InternalServerError,
+                    new ProblemDetails
+                    {
+                        Status = StatusCodes.Status500InternalServerError,
+                        Title = "Error interno",
+                        Detail = "Ocurrió un error al registrar el usuario."
+                    }
+                );
+            }
+            catch (Exception)
+            {
+                return StatusCode(
+                    StatusCodes.Status500InternalServerError,
+                    new ProblemDetails
+                    {
+                        Status = StatusCodes.Status500InternalServerError,
+                        Title = "Error interno",
+                        Detail = "Ocurrió un error interno del servidor."
+                    }
+                );
             }
         }
 
-        [HttpPut]
-        public async Task<IActionResult> Put([FromBody] Usuario usuario)
+        [HttpPut("{idUsuario}")]
+        public async Task<IActionResult> Put(
+            long idUsuario,
+            [FromBody] UsuarioUpdateReqDto request
+        )
         {
-            var existe = _service.GetUsuario(usuario.IdUsuario);
-            if (existe == null)
+            if (idUsuario <= 0)
             {
-                return NotFound(new Response<object>
-                {
-                    Success = false,
-                    Message = "No se encontró el usuario para actualizar."
-                });
-            }
-
-            try
-            {
-                var resp = _service.Update(usuario);
-                if (resp)
-                {
-                    return Ok(new Response<Usuario>
+                return BadRequest(
+                    new ProblemDetails
                     {
-                        Success = true,
-                        Message = "Se actualizó el usuario correctamente.",
-                        Data = usuario
-                    });
-                }
-                return BadRequest(new Response<object>
-                {
-                    Success = false,
-                    Message = "Hubo un error al actualizar el usuario."
-                });
-            }
-            catch (SqlException ex)
-            {
-                return BadRequest(new Response<object>
-                {
-                    Success = false,
-                    Message = ex.Message
-                });
-            }
-        }
-
-        [HttpDelete("{idUsuario}")]
-        public async Task<IActionResult> Delete(long idUsuario)
-        {
-            var usuario = _service.GetUsuario(idUsuario);
-            if (usuario == null)
-            {
-                return NotFound(new Response<object>
-                {
-                    Success = false,
-                    Message = "No se encontró el usuario para dar de baja."
-                });
-            }
-
-            try
-            {
-                var resp = _service.Delete(idUsuario);
-                if (resp)
-                {
-                    usuario.Estado = false;
-                    return Ok(new Response<Usuario>
-                    {
-                        Success = true,
-                        Message = "Se dio de baja al usuario correctamente.",
-                        Data = usuario
-                    });
-                }
-                return BadRequest(new Response<object>
-                {
-                    Success = false,
-                    Message = "Hubo un error al dar de baja al usuario."
-                });
-            }
-            catch (SqlException ex)
-            {
-                return BadRequest(new Response<object>
-                {
-                    Success = false,
-                    Message = ex.Message
-                });
-            }
-        }
-
-        [HttpPut("change-password")]
-        public async Task<IActionResult> ChangePassword([FromBody] ChangePasswordRequest request)
-        {
-            var existe = _service.GetUsuario(request.IdUsuario);
-            if (existe == null)
-            {
-                return NotFound(new Response<object>
-                {
-                    Success = false,
-                    Message = "No se encontró el usuario para cambiar la contraseña."
-                });
+                        Status = StatusCodes.Status400BadRequest,
+                        Title = "Solicitud inválida",
+                        Detail = "El IdUsuario debe ser mayor a 0."
+                    }
+                );
             }
 
             try
             {
-                var resp = _service.ChangePassword(request.IdUsuario, request.NuevoPasswordHash);
-                if (resp)
+                UsuarioRespDto? existente =
+                    await _service.GetByIdAsync(idUsuario);
+
+                if (existente is null)
                 {
-                    return Ok(new Response<object>
-                    {
-                        Success = true,
-                        Message = "Contraseña actualizada correctamente."
-                    });
+                    return NotFound(
+                        new ProblemDetails
+                        {
+                            Status = StatusCodes.Status404NotFound,
+                            Title = "Usuario no encontrado",
+                            Detail = "No se encontró el usuario para actualizar."
+                        }
+                    );
                 }
-                return BadRequest(new Response<object>
+
+                UsuarioRespDto? actualizado =
+                    await _service.UpdateAsync(
+                        idUsuario,
+                        request
+                    );
+
+                if (actualizado is null)
                 {
-                    Success = false,
-                    Message = "Hubo un error al actualizar la contraseña."
-                });
+                    return StatusCode(
+                        StatusCodes.Status500InternalServerError,
+                        new ProblemDetails
+                        {
+                            Status = StatusCodes.Status500InternalServerError,
+                            Title = "Error interno",
+                            Detail = "No se pudo obtener el usuario actualizado."
+                        }
+                    );
+                }
+
+                return Ok(actualizado);
             }
             catch (SqlException ex)
+                when (ex.Number == 2601 ||
+                      ex.Number == 2627)
             {
-                return BadRequest(new Response<object>
-                {
-                    Success = false,
-                    Message = ex.Message
-                });
+                return Conflict(
+                    new ProblemDetails
+                    {
+                        Status = StatusCodes.Status409Conflict,
+                        Title = "Conflicto",
+                        Detail = "Ya existe un usuario registrado con ese correo."
+                    }
+                );
+            }
+            catch (SqlException ex)
+                when (ex.Number == 547)
+            {
+                return BadRequest(
+                    new ProblemDetails
+                    {
+                        Status = StatusCodes.Status400BadRequest,
+                        Title = "Solicitud inválida",
+                        Detail = "El rol indicado no es válido."
+                    }
+                );
+            }
+            catch (SqlException)
+            {
+                return StatusCode(
+                    StatusCodes.Status500InternalServerError,
+                    new ProblemDetails
+                    {
+                        Status = StatusCodes.Status500InternalServerError,
+                        Title = "Error interno",
+                        Detail = "Ocurrió un error al actualizar el usuario."
+                    }
+                );
+            }
+            catch (Exception)
+            {
+                return StatusCode(
+                    StatusCodes.Status500InternalServerError,
+                    new ProblemDetails
+                    {
+                        Status = StatusCodes.Status500InternalServerError,
+                        Title = "Error interno",
+                        Detail = "Ocurrió un error interno del servidor."
+                    }
+                );
             }
         }
-    }
 
-    // DTO auxiliar para recibir la petición de cambio de clave de forma segura
-    public class ChangePasswordRequest
-    {
-        public long IdUsuario { get; set; }
-        public string NuevoPasswordHash { get; set; } = string.Empty;
+        [HttpPatch("{idUsuario}/estado")]
+        public async Task<IActionResult> ChangeStatus(
+            long idUsuario,
+            [FromQuery] bool estado
+        )
+        {
+            if (idUsuario <= 0)
+            {
+                return BadRequest(
+                    new ProblemDetails
+                    {
+                        Status = StatusCodes.Status400BadRequest,
+                        Title = "Solicitud inválida",
+                        Detail = "El IdUsuario debe ser mayor a 0."
+                    }
+                );
+            }
+
+            try
+            {
+                UsuarioRespDto? usuario =
+                    await _service.GetByIdAsync(idUsuario);
+
+                if (usuario is null)
+                {
+                    return NotFound(
+                        new ProblemDetails
+                        {
+                            Status = StatusCodes.Status404NotFound,
+                            Title = "Usuario no encontrado",
+                            Detail = "No se encontró el usuario solicitado."
+                        }
+                    );
+                }
+
+                if (usuario.Estado == estado)
+                {
+                    string mensajeConflicto = estado
+                        ? "El usuario ya se encuentra activo."
+                        : "El usuario ya se encuentra inactivo.";
+
+                    return Conflict(
+                        new ProblemDetails
+                        {
+                            Status = StatusCodes.Status409Conflict,
+                            Title = "Conflicto",
+                            Detail = mensajeConflicto
+                        }
+                    );
+                }
+
+                bool cambiado =
+                    await _service.ChangeStatusAsync(
+                        idUsuario,
+                        estado
+                    );
+
+                if (!cambiado)
+                {
+                    return BadRequest(
+                        new ProblemDetails
+                        {
+                            Status = StatusCodes.Status400BadRequest,
+                            Title = "Solicitud inválida",
+                            Detail = "No se pudo cambiar el estado del usuario."
+                        }
+                    );
+                }
+
+                UsuarioRespDto? actualizado =
+                    await _service.GetByIdAsync(idUsuario);
+
+                if (actualizado is null)
+                {
+                    return StatusCode(
+                        StatusCodes.Status500InternalServerError,
+                        new ProblemDetails
+                        {
+                            Status = StatusCodes.Status500InternalServerError,
+                            Title = "Error interno",
+                            Detail = "No se pudo obtener el usuario actualizado."
+                        }
+                    );
+                }
+
+                return Ok(actualizado);
+            }
+            catch (SqlException)
+            {
+                return StatusCode(
+                    StatusCodes.Status500InternalServerError,
+                    new ProblemDetails
+                    {
+                        Status = StatusCodes.Status500InternalServerError,
+                        Title = "Error interno",
+                        Detail = "Ocurrió un error al cambiar el estado del usuario."
+                    }
+                );
+            }
+            catch (Exception)
+            {
+                return StatusCode(
+                    StatusCodes.Status500InternalServerError,
+                    new ProblemDetails
+                    {
+                        Status = StatusCodes.Status500InternalServerError,
+                        Title = "Error interno",
+                        Detail = "Ocurrió un error interno del servidor."
+                    }
+                );
+            }
+        }
     }
 }

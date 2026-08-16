@@ -1,172 +1,181 @@
-﻿using Microsoft.Data.SqlClient;
-using System.Data;
+using GESTION_INVENTARIO_LICORES.DTOs.Request;
+using GESTION_INVENTARIO_LICORES.DTOs.Response;
 using GESTION_INVENTARIO_LICORES.Interfaces;
-using GESTION_INVENTARIO_LICORES.Models;
+using Microsoft.Data.SqlClient;
+using System.Data;
 
 namespace GESTION_INVENTARIO_LICORES.Services
 {
     public class MarcaService : IMarcaService
     {
-        private readonly string? _conexion;
+        private const int PageSize = 10;
+        private readonly string conexion;
 
         public MarcaService(IConfiguration configuration)
         {
-            _conexion = configuration.GetConnectionString("conexion");
+            conexion = configuration.GetConnectionString("conexion")
+                ?? throw new InvalidOperationException(
+                    "No se encontró la cadena de conexión 'conexion'."
+                );
         }
 
-        public List<Marca> List()
+        public async Task<PaginatedRespDto<MarcaRespDto>> ListAsync(
+            int pageNumber = 1,
+            string? nombre = null,
+            string? paisOrigen = null,
+            bool? estado = true,
+            string orden = "DESC"
+        )
         {
-            List<Marca> lista = new List<Marca>();
+            List<MarcaRespDto> marcas = new();
 
-            using (SqlConnection con = new SqlConnection(_conexion))
+            using (SqlConnection con = new SqlConnection(conexion))
             {
-                using (SqlCommand command = new SqlCommand("sp_listar_marcas", con))
+                using (SqlCommand command = new SqlCommand("sp_Marca_Listar", con))
                 {
                     command.CommandType = CommandType.StoredProcedure;
-                    con.Open();
-                    using (SqlDataReader reader = command.ExecuteReader())
+                    command.Parameters.AddWithValue("@Nombre", (object?)nombre ?? DBNull.Value);
+                    command.Parameters.AddWithValue("@PaisOrigen", (object?)paisOrigen ?? DBNull.Value);
+                    command.Parameters.AddWithValue("@Estado", (object?)estado ?? DBNull.Value);
+                    command.Parameters.AddWithValue("@Orden", orden);
+
+                    await con.OpenAsync();
+
+                    using (SqlDataReader reader = await command.ExecuteReaderAsync())
                     {
-                        while (reader.Read())
+                        while (await reader.ReadAsync())
                         {
-                            lista.Add(new Marca
+                            marcas.Add(new MarcaRespDto
                             {
                                 IdMarca = reader.GetInt64(0),
                                 Nombre = reader.GetString(1),
                                 PaisOrigen = reader.IsDBNull(2) ? null : reader.GetString(2),
-                                Estado = reader.GetBoolean(3),
-                                FechaCreacion = reader.GetDateTime(4),
-                                FechaActualizacion = reader.GetDateTime(5)
+                                Estado = reader.GetBoolean(3)
                             });
                         }
                     }
                 }
             }
-            return lista;
+            int totalItems = marcas.Count;
+
+            List<MarcaRespDto> items = marcas
+                .Skip((pageNumber - 1) * PageSize)
+                .Take(PageSize)
+                .ToList();
+
+            return new PaginatedRespDto<MarcaRespDto>
+            {
+                Items = items,
+                PageNumber = pageNumber,
+                TotalItems = totalItems
+            };
         }
 
-        public Marca GetMarca(long idMarca)
+        public async Task<MarcaRespDto?> GetByIdAsync(
+            long idMarca
+        )
         {
-            Marca marca = null;
-
-            using (SqlConnection con = new SqlConnection(_conexion))
+            using (SqlConnection con = new SqlConnection(conexion))
             {
-                using (SqlCommand command = new SqlCommand("sp_buscar_marca", con))
+                using (SqlCommand command =
+                    new SqlCommand("sp_Marca_ObtenerPorId", con))
                 {
                     command.CommandType = CommandType.StoredProcedure;
+
                     command.Parameters.AddWithValue("@IdMarca", idMarca);
-                    con.Open();
-                    using (SqlDataReader reader = command.ExecuteReader())
+
+                    await con.OpenAsync();
+
+                    using (SqlDataReader reader =
+                        await command.ExecuteReaderAsync())
                     {
-                        if (reader.Read())
+                        if (await reader.ReadAsync())
                         {
-                            marca = new Marca
+                            return new MarcaRespDto
                             {
                                 IdMarca = reader.GetInt64(0),
                                 Nombre = reader.GetString(1),
                                 PaisOrigen = reader.IsDBNull(2) ? null : reader.GetString(2),
-                                Estado = reader.GetBoolean(3),
-                                FechaCreacion = reader.GetDateTime(4),
-                                FechaActualizacion = reader.GetDateTime(5)
+                                Estado = reader.GetBoolean(3)
                             };
                         }
                     }
                 }
             }
-            return marca;
+            return null;
         }
 
-        public bool Insert(Marca marca)
+        public async Task<MarcaRespDto?> CreateAsync(
+            MarcaReqDto request
+        )
         {
-            bool resp = false;
-            using (SqlConnection con = new SqlConnection(_conexion))
+            using (SqlConnection con = new SqlConnection(conexion))
             {
-                con.Open();
-                SqlTransaction transaction = con.BeginTransaction();
-                try
+                using (SqlCommand command = new SqlCommand("sp_Marca_Crear", con))
                 {
-                    using (SqlCommand command = new SqlCommand("sp_insert_marca", con))
+                    command.CommandType = CommandType.StoredProcedure;
+                    command.Parameters.AddWithValue("@Nombre", request.Nombre);
+                    command.Parameters.AddWithValue("@PaisOrigen", (object?)request.PaisOrigen ?? DBNull.Value);
+
+                    await con.OpenAsync();
+
+                    object? resultado = await command.ExecuteScalarAsync();
+
+                    if (resultado is null || resultado == DBNull.Value)
                     {
-                        command.Transaction = transaction;
-                        command.CommandType = CommandType.StoredProcedure;
-                        command.Parameters.AddWithValue("@Nombre", marca.Nombre);
-                        command.Parameters.AddWithValue("@PaisOrigen", (object)marca.PaisOrigen ?? DBNull.Value);
-
-                        var id = command.ExecuteScalar();
-                        if (id != null)
-                        {
-                            marca.IdMarca = Convert.ToInt64(id);
-                            resp = true;
-                        }
-
-                        transaction.Commit();
+                        return null;
                     }
-                }
-                catch (Exception)
-                {
-                    transaction.Rollback();
-                    throw;
+
+                    long idMarca = Convert.ToInt64(resultado);
+
+                    return await GetByIdAsync(idMarca);
                 }
             }
-            return resp;
         }
 
-        public bool Update(Marca marca)
+        public async Task<MarcaRespDto?> UpdateAsync(
+            long idMarca,
+            MarcaUpdateReqDto request
+        )
         {
-            bool resp = false;
-            using (SqlConnection con = new SqlConnection(_conexion))
+            using (SqlConnection con = new SqlConnection(conexion))
             {
-                con.Open();
-                SqlTransaction transaction = con.BeginTransaction();
-                try
+                using (SqlCommand command = new SqlCommand("sp_Marca_Actualizar", con))
                 {
-                    using (SqlCommand command = new SqlCommand("sp_update_marca", con))
-                    {
-                        command.Transaction = transaction;
-                        command.CommandType = CommandType.StoredProcedure;
-                        command.Parameters.AddWithValue("@IdMarca", marca.IdMarca);
-                        command.Parameters.AddWithValue("@Nombre", marca.Nombre);
-                        command.Parameters.AddWithValue("@PaisOrigen", (object)marca.PaisOrigen ?? DBNull.Value);
-                        command.Parameters.AddWithValue("@Estado", marca.Estado);
+                    command.CommandType = CommandType.StoredProcedure;
+                    command.Parameters.AddWithValue("@IdMarca", idMarca);
+                    command.Parameters.AddWithValue("@Nombre", request.Nombre);
+                    command.Parameters.AddWithValue("@PaisOrigen", (object?)request.PaisOrigen ?? DBNull.Value);
 
-                        resp = command.ExecuteNonQuery() > 0;
-                        transaction.Commit();
-                    }
-                }
-                catch (Exception)
-                {
-                    transaction.Rollback();
-                    throw;
+                    await con.OpenAsync();
+
+                    await command.ExecuteNonQueryAsync();
+
+                    return await GetByIdAsync(idMarca);
                 }
             }
-            return resp;
         }
 
-        public bool Delete(long idMarca)
+        public async Task<bool> ChangeStatusAsync(
+            long idMarca,
+            bool estado
+        )
         {
-            bool resp = false;
-            using (SqlConnection con = new SqlConnection(_conexion))
+            using (SqlConnection con = new SqlConnection(conexion))
             {
-                con.Open();
-                SqlTransaction transaction = con.BeginTransaction();
-                try
+                using (SqlCommand command = new SqlCommand("sp_Marca_CambiarEstado", con))
                 {
-                    using (SqlCommand command = new SqlCommand("sp_delete_marca", con))
-                    {
-                        command.Transaction = transaction;
-                        command.CommandType = CommandType.StoredProcedure;
-                        command.Parameters.AddWithValue("@IdMarca", idMarca);
+                    command.CommandType = CommandType.StoredProcedure;
+                    command.Parameters.AddWithValue("@IdMarca", idMarca);
+                    command.Parameters.AddWithValue("@Estado", estado);
 
-                        resp = command.ExecuteNonQuery() > 0;
-                        transaction.Commit();
-                    }
-                }
-                catch (Exception)
-                {
-                    transaction.Rollback();
-                    throw;
+                    await con.OpenAsync();
+
+                    await command.ExecuteNonQueryAsync();
+
+                    return true;
                 }
             }
-            return resp;
         }
     }
 }

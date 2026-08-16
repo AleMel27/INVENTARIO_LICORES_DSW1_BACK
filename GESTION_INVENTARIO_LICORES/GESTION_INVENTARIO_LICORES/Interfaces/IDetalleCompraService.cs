@@ -1,11 +1,10 @@
-﻿using GESTION_INVENTARIO_LICORES.Models;
+using GESTION_INVENTARIO_LICORES.DTOs.Response;
 
-namespace GESTION_INVENTARIO_LICORES.Interfaces
+namespace GESTION_INVENTARIO_LICORES.Interfaces;
+
+public interface IDetalleCompraService
 {
-    public interface IDetalleCompraService
-    {
-        List<DetalleCompra> ListAll();
-        List<DetalleCompra> ListByCompra(long idCompra);
-        bool Insert(DetalleCompra detalle);
-    }
+    Task<IReadOnlyList<DetalleCompraRespDto>> ListByCompraAsync(
+        long idCompra
+    );
 }

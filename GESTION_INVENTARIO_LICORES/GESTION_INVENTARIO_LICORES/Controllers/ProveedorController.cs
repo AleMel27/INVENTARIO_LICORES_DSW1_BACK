@@ -1,7 +1,9 @@
-﻿using Microsoft.AspNetCore.Mvc;
-using Microsoft.Data.SqlClient;
+using GESTION_INVENTARIO_LICORES.DTOs.Request;
+using GESTION_INVENTARIO_LICORES.DTOs.Response;
+using GESTION_INVENTARIO_LICORES.Enums;
 using GESTION_INVENTARIO_LICORES.Interfaces;
-using GESTION_INVENTARIO_LICORES.Models;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.Data.SqlClient;
 
 namespace GESTION_INVENTARIO_LICORES.Controllers
 {
@@ -11,162 +13,428 @@ namespace GESTION_INVENTARIO_LICORES.Controllers
     {
         private readonly IProveedorService _service;
 
-        public ProveedorController(IProveedorService service)
+        public ProveedorController(
+            IProveedorService service
+        )
         {
             _service = service;
         }
 
         [HttpGet]
-        public async Task<IActionResult> Get()
+        public async Task<IActionResult> Get(
+            int pageNumber = 1,
+            EstadoFiltro estado = EstadoFiltro.Activos,
+            string orden = "DESC"
+        )
         {
-            var lista = _service.List();
-            if (lista.Count > 0)
+            if (pageNumber <= 0)
             {
-                return Ok(new Response<List<Proveedor>>
-                {
-                    Success = true,
-                    Message = "Proveedores obtenidos con éxito.",
-                    Data = lista
-                });
+                return BadRequest(
+                    new ProblemDetails
+                    {
+                        Status = StatusCodes.Status400BadRequest,
+                        Title = "Solicitud inválida",
+                        Detail = "El número de página debe ser mayor a 0."
+                    }
+                );
             }
-            return BadRequest(new Response<object>
+
+            orden = orden.ToUpperInvariant();
+
+            if (orden != "ASC" && orden != "DESC")
             {
-                Success = false,
-                Message = "No se encontraron proveedores registrados."
-            });
+                return BadRequest(
+                    new ProblemDetails
+                    {
+                        Status = StatusCodes.Status400BadRequest,
+                        Title = "Solicitud inválida",
+                        Detail = "El orden solamente puede ser ASC o DESC."
+                    }
+                );
+            }
+
+            try
+            {
+                bool? estadoFiltro = estado switch
+                {
+                    EstadoFiltro.Activos => true,
+                    EstadoFiltro.Inactivos => false,
+                    EstadoFiltro.Todos => null,
+                    _ => true
+                };
+
+                PaginatedRespDto<ProveedorRespDto> resultado =
+                    await _service.ListAsync(
+                        pageNumber,
+                        estadoFiltro,
+                        orden
+                    );
+
+                return Ok(resultado);
+            }
+            catch (SqlException)
+            {
+                return StatusCode(
+                    StatusCodes.Status500InternalServerError,
+                    new ProblemDetails
+                    {
+                        Status = StatusCodes.Status500InternalServerError,
+                        Title = "Error interno",
+                        Detail = "Ocurrió un error interno al procesar el proveedor."
+                    }
+                );
+            }
+            catch (Exception)
+            {
+                return StatusCode(
+                    StatusCodes.Status500InternalServerError,
+                    new ProblemDetails
+                    {
+                        Status = StatusCodes.Status500InternalServerError,
+                        Title = "Error interno",
+                        Detail = "Ocurrió un error interno del servidor."
+                    }
+                );
+            }
         }
 
         [HttpGet("{idProveedor}")]
-        public async Task<IActionResult> GetById(long idProveedor)
+        public async Task<IActionResult> GetById(
+            long idProveedor
+        )
         {
-            var proveedor = _service.GetProveedor(idProveedor);
-            if (proveedor == null)
+            if (idProveedor <= 0)
             {
-                return NotFound(new Response<object>
-                {
-                    Success = false,
-                    Message = "El proveedor solicitado no existe."
-                });
+                return BadRequest(
+                    new ProblemDetails
+                    {
+                        Status = StatusCodes.Status400BadRequest,
+                        Title = "Solicitud inválida",
+                        Detail = "El IdProveedor debe ser mayor a 0."
+                    }
+                );
             }
-            return Ok(new Response<Proveedor>
+
+            try
             {
-                Success = true,
-                Message = "Proveedor encontrado.",
-                Data = proveedor
-            });
+                ProveedorRespDto? proveedor =
+                    await _service.GetByIdAsync(idProveedor);
+
+                if (proveedor is null)
+                {
+                    return NotFound(
+                        new ProblemDetails
+                        {
+                            Status = StatusCodes.Status404NotFound,
+                            Title = "Proveedor no encontrado",
+                            Detail = "El proveedor solicitado no existe."
+                        }
+                    );
+                }
+
+                return Ok(proveedor);
+            }
+            catch (SqlException)
+            {
+                return StatusCode(
+                    StatusCodes.Status500InternalServerError,
+                    new ProblemDetails
+                    {
+                        Status = StatusCodes.Status500InternalServerError,
+                        Title = "Error interno",
+                        Detail = "Ocurrió un error interno al procesar el proveedor."
+                    }
+                );
+            }
+            catch (Exception)
+            {
+                return StatusCode(
+                    StatusCodes.Status500InternalServerError,
+                    new ProblemDetails
+                    {
+                        Status = StatusCodes.Status500InternalServerError,
+                        Title = "Error interno",
+                        Detail = "Ocurrió un error interno del servidor."
+                    }
+                );
+            }
         }
 
         [HttpPost]
-        public async Task<IActionResult> Post([FromBody] Proveedor proveedor)
+        public async Task<IActionResult> Post(
+            [FromBody] ProveedorReqDto request
+        )
         {
             try
             {
-                var resp = _service.Insert(proveedor);
-                if (resp)
+                ProveedorRespDto? proveedor =
+                    await _service.CreateAsync(request);
+
+                if (proveedor is null)
                 {
-                    return Created("", new Response<Proveedor>
-                    {
-                        Success = true,
-                        Message = "Proveedor registrado correctamente.",
-                        Data = proveedor
-                    });
+                    return BadRequest(
+                        new ProblemDetails
+                        {
+                            Status = StatusCodes.Status400BadRequest,
+                            Title = "Solicitud inválida",
+                            Detail = "No se pudo registrar el proveedor."
+                        }
+                    );
                 }
-                return BadRequest(new Response<object>
-                {
-                    Success = false,
-                    Message = "Hubo un error al registrar el proveedor."
-                });
+
+                return CreatedAtAction(
+                    nameof(GetById),
+                    new
+                    {
+                        idProveedor = proveedor.IdProveedor
+                    },
+                    proveedor
+                );
             }
             catch (SqlException ex)
+                when (ex.Number == 2601 ||
+                      ex.Number == 2627)
             {
-                return BadRequest(new Response<object>
-                {
-                    Success = false,
-                    Message = ex.Message
-                });
+                return Conflict(
+                    new ProblemDetails
+                    {
+                        Status = StatusCodes.Status409Conflict,
+                        Title = "Conflicto",
+                        Detail = "Ya existe un proveedor con el RUC o correo indicado."
+                    }
+                );
+            }
+            catch (SqlException)
+            {
+                return StatusCode(
+                    StatusCodes.Status500InternalServerError,
+                    new ProblemDetails
+                    {
+                        Status = StatusCodes.Status500InternalServerError,
+                        Title = "Error interno",
+                        Detail = "Ocurrió un error interno al procesar el proveedor."
+                    }
+                );
+            }
+            catch (Exception)
+            {
+                return StatusCode(
+                    StatusCodes.Status500InternalServerError,
+                    new ProblemDetails
+                    {
+                        Status = StatusCodes.Status500InternalServerError,
+                        Title = "Error interno",
+                        Detail = "Ocurrió un error interno del servidor."
+                    }
+                );
             }
         }
 
-        [HttpPut]
-        public async Task<IActionResult> Put([FromBody] Proveedor proveedor)
+        [HttpPut("{idProveedor}")]
+        public async Task<IActionResult> Put(
+            long idProveedor,
+            [FromBody] ProveedorUpdateReqDto request
+        )
         {
-            var existe = _service.GetProveedor(proveedor.IdProveedor);
-            if (existe == null)
+            if (idProveedor <= 0)
             {
-                return NotFound(new Response<object>
-                {
-                    Success = false,
-                    Message = "No se encontró el proveedor para actualizar."
-                });
+                return BadRequest(
+                    new ProblemDetails
+                    {
+                        Status = StatusCodes.Status400BadRequest,
+                        Title = "Solicitud inválida",
+                        Detail = "El IdProveedor debe ser mayor a 0."
+                    }
+                );
             }
 
             try
             {
-                var resp = _service.Update(proveedor);
-                if (resp)
+                ProveedorRespDto? existente =
+                    await _service.GetByIdAsync(idProveedor);
+
+                if (existente is null)
                 {
-                    return Ok(new Response<Proveedor>
-                    {
-                        Success = true,
-                        Message = "Se actualizó el proveedor correctamente.",
-                        Data = proveedor
-                    });
+                    return NotFound(
+                        new ProblemDetails
+                        {
+                            Status = StatusCodes.Status404NotFound,
+                            Title = "Proveedor no encontrado",
+                            Detail = "No se encontró el proveedor para actualizar."
+                        }
+                    );
                 }
-                return BadRequest(new Response<object>
+
+                ProveedorRespDto? actualizado =
+                    await _service.UpdateAsync(
+                        idProveedor,
+                        request
+                    );
+
+                if (actualizado is null)
                 {
-                    Success = false,
-                    Message = "Hubo un error al actualizar el proveedor."
-                });
+                    return StatusCode(
+                        StatusCodes.Status500InternalServerError,
+                        new ProblemDetails
+                        {
+                            Status = StatusCodes.Status500InternalServerError,
+                            Title = "Error interno",
+                            Detail = "No se pudo obtener el proveedor actualizado."
+                        }
+                    );
+                }
+
+                return Ok(actualizado);
             }
             catch (SqlException ex)
+                when (ex.Number == 2601 ||
+                      ex.Number == 2627)
             {
-                return BadRequest(new Response<object>
-                {
-                    Success = false,
-                    Message = ex.Message
-                });
+                return Conflict(
+                    new ProblemDetails
+                    {
+                        Status = StatusCodes.Status409Conflict,
+                        Title = "Conflicto",
+                        Detail = "Ya existe un proveedor con el RUC o correo indicado."
+                    }
+                );
+            }
+            catch (SqlException)
+            {
+                return StatusCode(
+                    StatusCodes.Status500InternalServerError,
+                    new ProblemDetails
+                    {
+                        Status = StatusCodes.Status500InternalServerError,
+                        Title = "Error interno",
+                        Detail = "Ocurrió un error interno al procesar el proveedor."
+                    }
+                );
+            }
+            catch (Exception)
+            {
+                return StatusCode(
+                    StatusCodes.Status500InternalServerError,
+                    new ProblemDetails
+                    {
+                        Status = StatusCodes.Status500InternalServerError,
+                        Title = "Error interno",
+                        Detail = "Ocurrió un error interno del servidor."
+                    }
+                );
             }
         }
 
-        [HttpDelete("{idProveedor}")]
-        public async Task<IActionResult> Delete(long idProveedor)
+        [HttpPatch("{idProveedor}/estado")]
+        public async Task<IActionResult> ChangeStatus(
+            long idProveedor,
+            [FromQuery] bool estado
+        )
         {
-            var proveedor = _service.GetProveedor(idProveedor);
-            if (proveedor == null)
+            if (idProveedor <= 0)
             {
-                return NotFound(new Response<object>
-                {
-                    Success = false,
-                    Message = "No se encontró el proveedor para dar de baja."
-                });
+                return BadRequest(
+                    new ProblemDetails
+                    {
+                        Status = StatusCodes.Status400BadRequest,
+                        Title = "Solicitud inválida",
+                        Detail = "El IdProveedor debe ser mayor a 0."
+                    }
+                );
             }
 
             try
             {
-                var resp = _service.Delete(idProveedor);
-                if (resp)
+                ProveedorRespDto? proveedor =
+                    await _service.GetByIdAsync(idProveedor);
+
+                if (proveedor is null)
                 {
-                    proveedor.Estado = false;
-                    return Ok(new Response<Proveedor>
-                    {
-                        Success = true,
-                        Message = "Se dio de baja al proveedor correctamente.",
-                        Data = proveedor
-                    });
+                    return NotFound(
+                        new ProblemDetails
+                        {
+                            Status = StatusCodes.Status404NotFound,
+                            Title = "Proveedor no encontrado",
+                            Detail = "No se encontró el proveedor solicitado."
+                        }
+                    );
                 }
-                return BadRequest(new Response<object>
+
+                if (proveedor.Estado == estado)
                 {
-                    Success = false,
-                    Message = "Hubo un error al dar de baja al proveedor."
-                });
+                    string mensajeConflicto = estado
+                        ? "El proveedor ya se encuentra activo."
+                        : "El proveedor ya se encuentra inactivo.";
+
+                    return Conflict(
+                        new ProblemDetails
+                        {
+                            Status = StatusCodes.Status409Conflict,
+                            Title = "Conflicto",
+                            Detail = mensajeConflicto
+                        }
+                    );
+                }
+
+                bool cambiado =
+                    await _service.ChangeStatusAsync(
+                        idProveedor,
+                        estado
+                    );
+
+                if (!cambiado)
+                {
+                    return BadRequest(
+                        new ProblemDetails
+                        {
+                            Status = StatusCodes.Status400BadRequest,
+                            Title = "Solicitud inválida",
+                            Detail = "No se pudo cambiar el estado del proveedor."
+                        }
+                    );
+                }
+
+                ProveedorRespDto? actualizado =
+                    await _service.GetByIdAsync(idProveedor);
+
+                if (actualizado is null)
+                {
+                    return StatusCode(
+                        StatusCodes.Status500InternalServerError,
+                        new ProblemDetails
+                        {
+                            Status = StatusCodes.Status500InternalServerError,
+                            Title = "Error interno",
+                            Detail = "No se pudo obtener el proveedor actualizado."
+                        }
+                    );
+                }
+
+                return Ok(actualizado);
             }
-            catch (SqlException ex)
+            catch (SqlException)
             {
-                return BadRequest(new Response<object>
-                {
-                    Success = false,
-                    Message = ex.Message
-                });
+                return StatusCode(
+                    StatusCodes.Status500InternalServerError,
+                    new ProblemDetails
+                    {
+                        Status = StatusCodes.Status500InternalServerError,
+                        Title = "Error interno",
+                        Detail = "Ocurrió un error interno al procesar el proveedor."
+                    }
+                );
+            }
+            catch (Exception)
+            {
+                return StatusCode(
+                    StatusCodes.Status500InternalServerError,
+                    new ProblemDetails
+                    {
+                        Status = StatusCodes.Status500InternalServerError,
+                        Title = "Error interno",
+                        Detail = "Ocurrió un error interno del servidor."
+                    }
+                );
             }
         }
     }

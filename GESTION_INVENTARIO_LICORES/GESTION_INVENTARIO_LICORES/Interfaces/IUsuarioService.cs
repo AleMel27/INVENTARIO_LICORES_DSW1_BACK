@@ -1,14 +1,34 @@
-﻿using GESTION_INVENTARIO_LICORES.Models;
+using GESTION_INVENTARIO_LICORES.DTOs.Request;
+using GESTION_INVENTARIO_LICORES.DTOs.Response;
 
-namespace GESTION_INVENTARIO_LICORES.Interfaces
+namespace GESTION_INVENTARIO_LICORES.Interfaces;
+
+public interface IUsuarioService
 {
-    public interface IUsuarioService
-    {
-        List<Usuario> List();
-        Usuario GetUsuario(long idUsuario);
-        bool Insert(Usuario usuario);
-        bool Update(Usuario usuario);
-        bool Delete(long idUsuario);
-        bool ChangePassword(long idUsuario, string nuevoPasswordHash); // <- Nuevo método
-    }
+    Task<PaginatedRespDto<UsuarioRespDto>> ListAsync(
+        int pageNumber = 1,
+        string? nombres = null,
+        string? apellidos = null,
+        long? idRol = null,
+        bool? estado = true,
+        string orden = "DESC"
+    );
+
+    Task<UsuarioRespDto?> GetByIdAsync(
+        long idUsuario
+    );
+
+    Task<UsuarioRespDto?> CreateAsync(
+        UsuarioReqDto request
+    );
+
+    Task<UsuarioRespDto?> UpdateAsync(
+        long idUsuario,
+        UsuarioUpdateReqDto request
+    );
+
+    Task<bool> ChangeStatusAsync(
+        long idUsuario,
+        bool estado
+    );
 }

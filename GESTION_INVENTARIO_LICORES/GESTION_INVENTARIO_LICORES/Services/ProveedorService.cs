@@ -1,34 +1,47 @@
-﻿using Microsoft.Data.SqlClient;
-using System.Data;
+using GESTION_INVENTARIO_LICORES.DTOs.Request;
+using GESTION_INVENTARIO_LICORES.DTOs.Response;
 using GESTION_INVENTARIO_LICORES.Interfaces;
-using GESTION_INVENTARIO_LICORES.Models;
+using Microsoft.Data.SqlClient;
+using System.Data;
 
 namespace GESTION_INVENTARIO_LICORES.Services
 {
     public class ProveedorService : IProveedorService
     {
-        private readonly string? _conexion;
+        private const int PageSize = 10;
+        private readonly string conexion;
 
         public ProveedorService(IConfiguration configuration)
         {
-            _conexion = configuration.GetConnectionString("conexion");
+            conexion = configuration.GetConnectionString("conexion")
+                ?? throw new InvalidOperationException(
+                    "No se encontró la cadena de conexión 'conexion'."
+                );
         }
 
-        public List<Proveedor> List()
+        public async Task<PaginatedRespDto<ProveedorRespDto>> ListAsync(
+            int pageNumber = 1,
+            bool? estado = true,
+            string orden = "DESC"
+        )
         {
-            List<Proveedor> lista = new List<Proveedor>();
+            List<ProveedorRespDto> proveedores = new();
 
-            using (SqlConnection con = new SqlConnection(_conexion))
+            using (SqlConnection con = new SqlConnection(conexion))
             {
-                using (SqlCommand command = new SqlCommand("sp_listar_proveedores", con))
+                using (SqlCommand command = new SqlCommand("sp_Proveedor_Listar", con))
                 {
                     command.CommandType = CommandType.StoredProcedure;
-                    con.Open();
-                    using (SqlDataReader reader = command.ExecuteReader())
+                    command.Parameters.AddWithValue("@Estado", (object?)estado ?? DBNull.Value);
+                    command.Parameters.AddWithValue("@Orden", orden);
+
+                    await con.OpenAsync();
+
+                    using (SqlDataReader reader = await command.ExecuteReaderAsync())
                     {
-                        while (reader.Read())
+                        while (await reader.ReadAsync())
                         {
-                            lista.Add(new Proveedor
+                            proveedores.Add(new ProveedorRespDto
                             {
                                 IdProveedor = reader.GetInt64(0),
                                 Ruc = reader.GetString(1),
@@ -36,32 +49,48 @@ namespace GESTION_INVENTARIO_LICORES.Services
                                 Telefono = reader.IsDBNull(3) ? null : reader.GetString(3),
                                 Correo = reader.IsDBNull(4) ? null : reader.GetString(4),
                                 Direccion = reader.IsDBNull(5) ? null : reader.GetString(5),
-                                Estado = reader.GetBoolean(6),
-                                FechaCreacion = reader.GetDateTime(7),
-                                FechaActualizacion = reader.GetDateTime(8)
+                                Estado = reader.GetBoolean(6)
                             });
                         }
                     }
                 }
             }
-            return lista;
-        }
-        public Proveedor GetProveedor(long idProveedor)
-        {
-            Proveedor proveedor = null;
+            int totalItems = proveedores.Count;
 
-            using (SqlConnection con = new SqlConnection(_conexion))
+            List<ProveedorRespDto> items = proveedores
+                .Skip((pageNumber - 1) * PageSize)
+                .Take(PageSize)
+                .ToList();
+
+            return new PaginatedRespDto<ProveedorRespDto>
             {
-                using (SqlCommand command = new SqlCommand("sp_buscar_proveedor", con))
+                Items = items,
+                PageNumber = pageNumber,
+                TotalItems = totalItems
+            };
+        }
+
+        public async Task<ProveedorRespDto?> GetByIdAsync(
+            long idProveedor
+        )
+        {
+            using (SqlConnection con = new SqlConnection(conexion))
+            {
+                using (SqlCommand command =
+                    new SqlCommand("sp_Proveedor_ObtenerPorId", con))
                 {
                     command.CommandType = CommandType.StoredProcedure;
+
                     command.Parameters.AddWithValue("@IdProveedor", idProveedor);
-                    con.Open();
-                    using (SqlDataReader reader = command.ExecuteReader())
+
+                    await con.OpenAsync();
+
+                    using (SqlDataReader reader =
+                        await command.ExecuteReaderAsync())
                     {
-                        if (reader.Read())
+                        if (await reader.ReadAsync())
                         {
-                            proveedor = new Proveedor
+                            return new ProveedorRespDto
                             {
                                 IdProveedor = reader.GetInt64(0),
                                 Ruc = reader.GetString(1),
@@ -69,112 +98,92 @@ namespace GESTION_INVENTARIO_LICORES.Services
                                 Telefono = reader.IsDBNull(3) ? null : reader.GetString(3),
                                 Correo = reader.IsDBNull(4) ? null : reader.GetString(4),
                                 Direccion = reader.IsDBNull(5) ? null : reader.GetString(5),
-                                Estado = reader.GetBoolean(6),
-                                FechaCreacion = reader.GetDateTime(7),
-                                FechaActualizacion = reader.GetDateTime(8)
+                                Estado = reader.GetBoolean(6)
                             };
                         }
                     }
                 }
             }
-            return proveedor;
+            return null;
         }
-        public bool Insert(Proveedor proveedor)
+
+        public async Task<ProveedorRespDto?> CreateAsync(
+            ProveedorReqDto request
+        )
         {
-            bool resp = false;
-            using (SqlConnection con = new SqlConnection(_conexion))
+            using (SqlConnection con = new SqlConnection(conexion))
             {
-                con.Open();
-                SqlTransaction transaction = con.BeginTransaction();
-                try
+                using (SqlCommand command = new SqlCommand("sp_Proveedor_Crear", con))
                 {
-                    using (SqlCommand command = new SqlCommand("sp_insert_proveedor", con))
+                    command.CommandType = CommandType.StoredProcedure;
+                    command.Parameters.AddWithValue("@Ruc", request.Ruc);
+                    command.Parameters.AddWithValue("@RazonSocial", request.RazonSocial);
+                    command.Parameters.AddWithValue("@Telefono", (object?)request.Telefono ?? DBNull.Value);
+                    command.Parameters.AddWithValue("@Correo", (object?)request.Correo ?? DBNull.Value);
+                    command.Parameters.AddWithValue("@Direccion", (object?)request.Direccion ?? DBNull.Value);
+
+                    await con.OpenAsync();
+
+                    object? resultado = await command.ExecuteScalarAsync();
+
+                    if (resultado is null || resultado == DBNull.Value)
                     {
-                        command.Transaction = transaction;
-                        command.CommandType = CommandType.StoredProcedure;
-                        command.Parameters.AddWithValue("@Ruc", proveedor.Ruc);
-                        command.Parameters.AddWithValue("@RazonSocial", proveedor.RazonSocial);
-                        command.Parameters.AddWithValue("@Telefono", (object)proveedor.Telefono ?? DBNull.Value);
-                        command.Parameters.AddWithValue("@Correo", (object)proveedor.Correo ?? DBNull.Value);
-                        command.Parameters.AddWithValue("@Direccion", (object)proveedor.Direccion ?? DBNull.Value);
-
-                        var id = command.ExecuteScalar();
-                        if (id != null)
-                        {
-                            proveedor.IdProveedor = Convert.ToInt64(id);
-                            resp = true;
-                        }
-
-                        transaction.Commit();
+                        return null;
                     }
-                }
-                catch (Exception)
-                {
-                    transaction.Rollback();
-                    throw;
+
+                    long idProveedor = Convert.ToInt64(resultado);
+
+                    return await GetByIdAsync(idProveedor);
                 }
             }
-            return resp;
         }
-        public bool Update(Proveedor proveedor)
-        {
-            bool resp = false;
-            using (SqlConnection con = new SqlConnection(_conexion))
-            {
-                con.Open();
-                SqlTransaction transaction = con.BeginTransaction();
-                try
-                {
-                    using (SqlCommand command = new SqlCommand("sp_update_proveedor", con))
-                    {
-                        command.Transaction = transaction;
-                        command.CommandType = CommandType.StoredProcedure;
-                        command.Parameters.AddWithValue("@IdProveedor", proveedor.IdProveedor);
-                        command.Parameters.AddWithValue("@Ruc", proveedor.Ruc);
-                        command.Parameters.AddWithValue("@RazonSocial", proveedor.RazonSocial);
-                        command.Parameters.AddWithValue("@Telefono", (object)proveedor.Telefono ?? DBNull.Value);
-                        command.Parameters.AddWithValue("@Correo", (object)proveedor.Correo ?? DBNull.Value);
-                        command.Parameters.AddWithValue("@Direccion", (object)proveedor.Direccion ?? DBNull.Value);
-                        command.Parameters.AddWithValue("@Estado", proveedor.Estado);
 
-                        resp = command.ExecuteNonQuery() > 0;
-                        transaction.Commit();
-                    }
-                }
-                catch (Exception)
+        public async Task<ProveedorRespDto?> UpdateAsync(
+            long idProveedor,
+            ProveedorUpdateReqDto request
+        )
+        {
+            using (SqlConnection con = new SqlConnection(conexion))
+            {
+                using (SqlCommand command = new SqlCommand("sp_Proveedor_Actualizar", con))
                 {
-                    transaction.Rollback();
-                    throw;
+                    command.CommandType = CommandType.StoredProcedure;
+                    command.Parameters.AddWithValue("@IdProveedor", idProveedor);
+                    command.Parameters.AddWithValue("@Ruc", request.Ruc);
+                    command.Parameters.AddWithValue("@RazonSocial", request.RazonSocial);
+                    command.Parameters.AddWithValue("@Telefono", (object?)request.Telefono ?? DBNull.Value);
+                    command.Parameters.AddWithValue("@Correo", (object?)request.Correo ?? DBNull.Value);
+                    command.Parameters.AddWithValue("@Direccion", (object?)request.Direccion ?? DBNull.Value);
+
+                    await con.OpenAsync();
+
+                    await command.ExecuteNonQueryAsync();
+
+                    return await GetByIdAsync(idProveedor);
                 }
             }
-            return resp;
         }
-        public bool Delete(long idProveedor)
-        {
-            bool resp = false;
-            using (SqlConnection con = new SqlConnection(_conexion))
-            {
-                con.Open();
-                SqlTransaction transaction = con.BeginTransaction();
-                try
-                {
-                    using (SqlCommand command = new SqlCommand("sp_delete_proveedor", con))
-                    {
-                        command.Transaction = transaction;
-                        command.CommandType = CommandType.StoredProcedure;
-                        command.Parameters.AddWithValue("@IdProveedor", idProveedor);
 
-                        resp = command.ExecuteNonQuery() > 0;
-                        transaction.Commit();
-                    }
-                }
-                catch (Exception)
+        public async Task<bool> ChangeStatusAsync(
+            long idProveedor,
+            bool estado
+        )
+        {
+            using (SqlConnection con = new SqlConnection(conexion))
+            {
+                using (SqlCommand command = new SqlCommand("sp_Proveedor_CambiarEstado", con))
                 {
-                    transaction.Rollback();
-                    throw;
+                    command.CommandType = CommandType.StoredProcedure;
+                    command.Parameters.AddWithValue("@IdProveedor", idProveedor);
+                    command.Parameters.AddWithValue("@Estado", estado);
+
+                    await con.OpenAsync();
+
+                    await command.ExecuteNonQueryAsync();
+
+                    return true;
                 }
             }
-            return resp;
         }
     }
 }

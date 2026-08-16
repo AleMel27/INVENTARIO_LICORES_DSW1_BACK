@@ -1,7 +1,9 @@
-﻿using Microsoft.AspNetCore.Mvc;
-using Microsoft.Data.SqlClient;
+using GESTION_INVENTARIO_LICORES.DTOs.Request;
+using GESTION_INVENTARIO_LICORES.DTOs.Response;
+using GESTION_INVENTARIO_LICORES.Enums;
 using GESTION_INVENTARIO_LICORES.Interfaces;
-using GESTION_INVENTARIO_LICORES.Models;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.Data.SqlClient;
 
 namespace GESTION_INVENTARIO_LICORES.Controllers
 {
@@ -11,162 +13,418 @@ namespace GESTION_INVENTARIO_LICORES.Controllers
     {
         private readonly IAlmacenService _service;
 
-        public AlmacenController(IAlmacenService service)
+        public AlmacenController(
+            IAlmacenService service
+        )
         {
             _service = service;
         }
 
         [HttpGet]
-        public async Task<IActionResult> Get()
+        public async Task<IActionResult> Get(
+            int pageNumber = 1,
+            string? nombre = null,
+            string? ubicacion = null,
+            EstadoFiltro estado = EstadoFiltro.Activos,
+            string orden = "DESC"
+        )
         {
-            var lista = _service.List();
-            if (lista.Count > 0)
+            if (pageNumber <= 0)
             {
-                return Ok(new Response<List<Almacen>>
-                {
-                    Success = true,
-                    Message = "Almacenes obtenidos con éxito.",
-                    Data = lista
-                });
+                return BadRequest(
+                    new ProblemDetails
+                    {
+                        Status = StatusCodes.Status400BadRequest,
+                        Title = "Solicitud inválida",
+                        Detail = "El número de página debe ser mayor a 0."
+                    }
+                );
             }
-            return BadRequest(new Response<object>
+
+            orden = orden.ToUpperInvariant();
+
+            if (orden != "ASC" && orden != "DESC")
             {
-                Success = false,
-                Message = "No se encontraron almacenes registrados."
-            });
+                return BadRequest(
+                    new ProblemDetails
+                    {
+                        Status = StatusCodes.Status400BadRequest,
+                        Title = "Solicitud inválida",
+                        Detail = "El orden solamente puede ser ASC o DESC."
+                    }
+                );
+            }
+
+            try
+            {
+                bool? estadoFiltro = estado switch
+                {
+                    EstadoFiltro.Activos => true,
+                    EstadoFiltro.Inactivos => false,
+                    EstadoFiltro.Todos => null,
+                    _ => true
+                };
+
+                PaginatedRespDto<AlmacenRespDto> resultado =
+                    await _service.ListAsync(
+                        pageNumber,
+                        nombre,
+                        ubicacion,
+                        estadoFiltro,
+                        orden
+                    );
+
+                return Ok(resultado);
+            }
+            catch (SqlException)
+            {
+                return StatusCode(
+                    StatusCodes.Status500InternalServerError,
+                    new ProblemDetails
+                    {
+                        Status = StatusCodes.Status500InternalServerError,
+                        Title = "Error interno",
+                        Detail = "Ocurrió un error al obtener los almacenes."
+                    }
+                );
+            }
+            catch (Exception)
+            {
+                return StatusCode(
+                    StatusCodes.Status500InternalServerError,
+                    new ProblemDetails
+                    {
+                        Status = StatusCodes.Status500InternalServerError,
+                        Title = "Error interno",
+                        Detail = "Ocurrió un error interno del servidor."
+                    }
+                );
+            }
         }
 
         [HttpGet("{idAlmacen}")]
-        public async Task<IActionResult> GetById(long idAlmacen)
+        public async Task<IActionResult> GetById(
+            long idAlmacen
+        )
         {
-            var almacen = _service.GetAlmacen(idAlmacen);
-            if (almacen == null)
+            if (idAlmacen <= 0)
             {
-                return NotFound(new Response<object>
-                {
-                    Success = false,
-                    Message = "El almacén solicitado no existe."
-                });
+                return BadRequest(
+                    new ProblemDetails
+                    {
+                        Status = StatusCodes.Status400BadRequest,
+                        Title = "Solicitud inválida",
+                        Detail = "El IdAlmacen debe ser mayor a 0."
+                    }
+                );
             }
-            return Ok(new Response<Almacen>
+
+            try
             {
-                Success = true,
-                Message = "Almacén encontrado.",
-                Data = almacen
-            });
+                AlmacenRespDto? almacen =
+                    await _service.GetByIdAsync(idAlmacen);
+
+                if (almacen is null)
+                {
+                    return NotFound(
+                        new ProblemDetails
+                        {
+                            Status = StatusCodes.Status404NotFound,
+                            Title = "Almacén no encontrado",
+                            Detail = "El almacén solicitado no existe."
+                        }
+                    );
+                }
+
+                return Ok(almacen);
+            }
+            catch (SqlException)
+            {
+                return StatusCode(
+                    StatusCodes.Status500InternalServerError,
+                    new ProblemDetails
+                    {
+                        Status = StatusCodes.Status500InternalServerError,
+                        Title = "Error interno",
+                        Detail = "Ocurrió un error al obtener el almacén."
+                    }
+                );
+            }
+            catch (Exception)
+            {
+                return StatusCode(
+                    StatusCodes.Status500InternalServerError,
+                    new ProblemDetails
+                    {
+                        Status = StatusCodes.Status500InternalServerError,
+                        Title = "Error interno",
+                        Detail = "Ocurrió un error interno del servidor."
+                    }
+                );
+            }
         }
 
         [HttpPost]
-        public async Task<IActionResult> Post([FromBody] Almacen almacen)
+        public async Task<IActionResult> Post(
+            [FromBody] AlmacenReqDto request
+        )
         {
             try
             {
-                var resp = _service.Insert(almacen);
-                if (resp)
+                AlmacenRespDto? almacen =
+                    await _service.CreateAsync(request);
+
+                if (almacen is null)
                 {
-                    return Created("", new Response<Almacen>
-                    {
-                        Success = true,
-                        Message = "Almacén registrado correctamente.",
-                        Data = almacen
-                    });
+                    return BadRequest(
+                        new ProblemDetails
+                        {
+                            Status = StatusCodes.Status400BadRequest,
+                            Title = "Solicitud inválida",
+                            Detail = "No se pudo registrar el almacén."
+                        }
+                    );
                 }
-                return BadRequest(new Response<object>
-                {
-                    Success = false,
-                    Message = "Hubo un error al registrar el almacén."
-                });
+
+                return CreatedAtAction(
+                    nameof(GetById),
+                    new
+                    {
+                        idAlmacen = almacen.IdAlmacen
+                    },
+                    almacen
+                );
             }
             catch (SqlException ex)
+                when (ex.Number == 2601 ||
+                      ex.Number == 2627)
             {
-                return BadRequest(new Response<object>
-                {
-                    Success = false,
-                    Message = ex.Message
-                });
+                return Conflict(
+                    new ProblemDetails
+                    {
+                        Status = StatusCodes.Status409Conflict,
+                        Title = "Conflicto",
+                        Detail = "Ya existe un almacén con ese nombre."
+                    }
+                );
+            }
+            catch (SqlException)
+            {
+                return StatusCode(
+                    StatusCodes.Status500InternalServerError,
+                    new ProblemDetails
+                    {
+                        Status = StatusCodes.Status500InternalServerError,
+                        Title = "Error interno",
+                        Detail = "Ocurrió un error al registrar el almacén."
+                    }
+                );
+            }
+            catch (Exception)
+            {
+                return StatusCode(
+                    StatusCodes.Status500InternalServerError,
+                    new ProblemDetails
+                    {
+                        Status = StatusCodes.Status500InternalServerError,
+                        Title = "Error interno",
+                        Detail = "Ocurrió un error interno del servidor."
+                    }
+                );
             }
         }
 
-        [HttpPut]
-        public async Task<IActionResult> Put([FromBody] Almacen almacen)
+        [HttpPut("{idAlmacen}")]
+        public async Task<IActionResult> Put(
+            long idAlmacen,
+            [FromBody] AlmacenUpdateReqDto request
+        )
         {
-            var existe = _service.GetAlmacen(almacen.IdAlmacen);
-            if (existe == null)
+            if (idAlmacen <= 0)
             {
-                return NotFound(new Response<object>
-                {
-                    Success = false,
-                    Message = "No se encontró el almacén para actualizar."
-                });
+                return BadRequest(
+                    new ProblemDetails
+                    {
+                        Status = StatusCodes.Status400BadRequest,
+                        Title = "Solicitud inválida",
+                        Detail = "El IdAlmacen debe ser mayor a 0."
+                    }
+                );
             }
 
             try
             {
-                var resp = _service.Update(almacen);
-                if (resp)
+                AlmacenRespDto? existente =
+                    await _service.GetByIdAsync(idAlmacen);
+
+                if (existente is null)
                 {
-                    return Ok(new Response<Almacen>
-                    {
-                        Success = true,
-                        Message = "Se actualizó el almacén correctamente.",
-                        Data = almacen
-                    });
+                    return NotFound(
+                        new ProblemDetails
+                        {
+                            Status = StatusCodes.Status404NotFound,
+                            Title = "Almacén no encontrado",
+                            Detail = "No se encontró el almacén para actualizar."
+                        }
+                    );
                 }
-                return BadRequest(new Response<object>
+
+                AlmacenRespDto? actualizado =
+                    await _service.UpdateAsync(
+                        idAlmacen,
+                        request
+                    );
+
+                if (actualizado is null)
                 {
-                    Success = false,
-                    Message = "Hubo un error al actualizar el almacén."
-                });
+                    return NotFound(
+                        new ProblemDetails
+                        {
+                            Status = StatusCodes.Status404NotFound,
+                            Title = "Almacén no encontrado",
+                            Detail = "No se encontró el almacén para actualizar."
+                        }
+                    );
+                }
+
+                return Ok(actualizado);
             }
             catch (SqlException ex)
+                when (ex.Number == 2601 ||
+                      ex.Number == 2627)
             {
-                return BadRequest(new Response<object>
-                {
-                    Success = false,
-                    Message = ex.Message
-                });
+                return Conflict(
+                    new ProblemDetails
+                    {
+                        Status = StatusCodes.Status409Conflict,
+                        Title = "Conflicto",
+                        Detail = "Ya existe un almacén con ese nombre."
+                    }
+                );
+            }
+            catch (SqlException)
+            {
+                return StatusCode(
+                    StatusCodes.Status500InternalServerError,
+                    new ProblemDetails
+                    {
+                        Status = StatusCodes.Status500InternalServerError,
+                        Title = "Error interno",
+                        Detail = "Ocurrió un error al actualizar el almacén."
+                    }
+                );
+            }
+            catch (Exception)
+            {
+                return StatusCode(
+                    StatusCodes.Status500InternalServerError,
+                    new ProblemDetails
+                    {
+                        Status = StatusCodes.Status500InternalServerError,
+                        Title = "Error interno",
+                        Detail = "Ocurrió un error interno del servidor."
+                    }
+                );
             }
         }
 
-        [HttpDelete("{idAlmacen}")]
-        public async Task<IActionResult> Delete(long idAlmacen)
+        [HttpPatch("{idAlmacen}/estado")]
+        public async Task<IActionResult> ChangeStatus(
+            long idAlmacen,
+            [FromQuery] bool estado
+        )
         {
-            var almacen = _service.GetAlmacen(idAlmacen);
-            if (almacen == null)
+            if (idAlmacen <= 0)
             {
-                return NotFound(new Response<object>
-                {
-                    Success = false,
-                    Message = "No se encontró el almacén para dar de baja."
-                });
+                return BadRequest(
+                    new ProblemDetails
+                    {
+                        Status = StatusCodes.Status400BadRequest,
+                        Title = "Solicitud inválida",
+                        Detail = "El IdAlmacen debe ser mayor a 0."
+                    }
+                );
             }
 
             try
             {
-                var resp = _service.Delete(idAlmacen);
-                if (resp)
+                AlmacenRespDto? almacen =
+                    await _service.GetByIdAsync(idAlmacen);
+
+                if (almacen is null)
                 {
-                    almacen.Estado = false;
-                    return Ok(new Response<Almacen>
-                    {
-                        Success = true,
-                        Message = "Se dio de baja el almacén correctamente.",
-                        Data = almacen
-                    });
+                    return NotFound(
+                        new ProblemDetails
+                        {
+                            Status = StatusCodes.Status404NotFound,
+                            Title = "Almacén no encontrado",
+                            Detail = "No se encontró el almacén solicitado."
+                        }
+                    );
                 }
-                return BadRequest(new Response<object>
+
+                if (almacen.Estado == estado)
                 {
-                    Success = false,
-                    Message = "Hubo un error al dar de baja el almacén."
-                });
+                    string mensajeConflicto = estado
+                        ? "El almacén ya se encuentra activo."
+                        : "El almacén ya se encuentra inactivo.";
+
+                    return Conflict(
+                        new ProblemDetails
+                        {
+                            Status = StatusCodes.Status409Conflict,
+                            Title = "Conflicto",
+                            Detail = mensajeConflicto
+                        }
+                    );
+                }
+
+                bool cambiado =
+                    await _service.ChangeStatusAsync(
+                        idAlmacen,
+                        estado
+                    );
+
+                if (!cambiado)
+                {
+                    return BadRequest(
+                        new ProblemDetails
+                        {
+                            Status = StatusCodes.Status400BadRequest,
+                            Title = "Solicitud inválida",
+                            Detail = "No se pudo cambiar el estado del almacén."
+                        }
+                    );
+                }
+
+                AlmacenRespDto? actualizado =
+                    await _service.GetByIdAsync(idAlmacen);
+
+                return Ok(actualizado);
             }
-            catch (SqlException ex)
+            catch (SqlException)
             {
-                return BadRequest(new Response<object>
-                {
-                    Success = false,
-                    Message = ex.Message
-                });
+                return StatusCode(
+                    StatusCodes.Status500InternalServerError,
+                    new ProblemDetails
+                    {
+                        Status = StatusCodes.Status500InternalServerError,
+                        Title = "Error interno",
+                        Detail = "Ocurrió un error al cambiar el estado del almacén."
+                    }
+                );
+            }
+            catch (Exception)
+            {
+                return StatusCode(
+                    StatusCodes.Status500InternalServerError,
+                    new ProblemDetails
+                    {
+                        Status = StatusCodes.Status500InternalServerError,
+                        Title = "Error interno",
+                        Detail = "Ocurrió un error interno del servidor."
+                    }
+                );
             }
         }
     }
