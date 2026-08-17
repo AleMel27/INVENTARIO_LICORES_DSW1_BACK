@@ -24,6 +24,7 @@ namespace GESTION_INVENTARIO_LICORES.Services
             int pageNumber = 1,
             string? estado = null,
             long? idTipoComprobante = null,
+            long? idAlmacen = null,
             DateTime? fecha = null,
             string? razonSocial = null,
             string? numeroComprobante = null,
@@ -39,6 +40,7 @@ namespace GESTION_INVENTARIO_LICORES.Services
                     command.CommandType = CommandType.StoredProcedure;
                     command.Parameters.AddWithValue("@Estado", (object?)estado ?? DBNull.Value);
                     command.Parameters.AddWithValue("@IdTipoComprobante", (object?)idTipoComprobante ?? DBNull.Value);
+                    command.Parameters.AddWithValue("@IdAlmacen", (object?)idAlmacen ?? DBNull.Value);
                     command.Parameters.AddWithValue("@Fecha", (object?)fecha ?? DBNull.Value);
                     command.Parameters.AddWithValue("@RazonSocial", (object?)razonSocial ?? DBNull.Value);
                     command.Parameters.AddWithValue("@NumeroComprobante", (object?)numeroComprobante ?? DBNull.Value);
@@ -48,6 +50,15 @@ namespace GESTION_INVENTARIO_LICORES.Services
 
                     using (SqlDataReader reader = await command.ExecuteReaderAsync())
                     {
+                        int ordIdAlmacen =
+                            reader.GetOrdinal("IdAlmacen");
+
+                        int ordNombreAlmacen =
+                            reader.GetOrdinal("NombreAlmacen");
+
+                        int ordUbicacionAlmacen =
+                            reader.GetOrdinal("UbicacionAlmacen");
+
                         while (await reader.ReadAsync())
                         {
                             compras.Add(new CompraRespDto
@@ -72,6 +83,13 @@ namespace GESTION_INVENTARIO_LICORES.Services
                                 {
                                     IdTipoComprobante = reader.GetInt64(7),
                                     Nombre = reader.GetString(8)
+                                },
+
+                                Almacen = new AlmacenInventarioRespDto
+                                {
+                                    IdAlmacen = reader.GetInt64(ordIdAlmacen),
+                                    Nombre = reader.GetString(ordNombreAlmacen),
+                                    Ubicacion = reader.GetString(ordUbicacionAlmacen)
                                 },
 
                                 FechaCompra = reader.GetDateTime(9),
@@ -116,6 +134,15 @@ namespace GESTION_INVENTARIO_LICORES.Services
                     using (SqlDataReader reader =
                         await command.ExecuteReaderAsync())
                     {
+                        int ordIdAlmacen =
+                            reader.GetOrdinal("IdAlmacen");
+
+                        int ordNombreAlmacen =
+                            reader.GetOrdinal("NombreAlmacen");
+
+                        int ordUbicacionAlmacen =
+                            reader.GetOrdinal("UbicacionAlmacen");
+
                         if (await reader.ReadAsync())
                         {
                             CompraDetalleRespDto compra = new CompraDetalleRespDto
@@ -140,6 +167,13 @@ namespace GESTION_INVENTARIO_LICORES.Services
                                 {
                                     IdTipoComprobante = reader.GetInt64(7),
                                     Nombre = reader.GetString(8)
+                                },
+
+                                Almacen = new AlmacenInventarioRespDto
+                                {
+                                    IdAlmacen = reader.GetInt64(ordIdAlmacen),
+                                    Nombre = reader.GetString(ordNombreAlmacen),
+                                    Ubicacion = reader.GetString(ordUbicacionAlmacen)
                                 },
 
                                 FechaCompra = reader.GetDateTime(9),
@@ -237,6 +271,13 @@ namespace GESTION_INVENTARIO_LICORES.Services
                     );
                 }
 
+                if (!await ExisteAlmacenActivoAsync(con, request.IdAlmacen))
+                {
+                    throw new BusinessValidationException(
+                        "El almacén indicado no es válido o se encuentra inactivo."
+                    );
+                }
+
                 if (await ExisteComprobanteAsync(
                     con,
                     request.IdProveedor,
@@ -261,51 +302,31 @@ namespace GESTION_INVENTARIO_LICORES.Services
 
                 DataTable detallesTable = CrearDetallesTable(request.Detalles);
 
-                using (SqlTransaction transaction =
-                    (SqlTransaction)await con.BeginTransactionAsync())
+                using (SqlCommand command =
+                    new SqlCommand(
+                        "sp_Compra_Crear",
+                        con
+                    ))
                 {
-                    try
+                    command.CommandType = CommandType.StoredProcedure;
+                    command.Parameters.AddWithValue("@IdProveedor", request.IdProveedor);
+                    command.Parameters.AddWithValue("@IdUsuario", request.IdUsuario);
+                    command.Parameters.AddWithValue("@IdTipoComprobante", request.IdTipoComprobante);
+                    command.Parameters.AddWithValue("@IdAlmacen", request.IdAlmacen);
+                    command.Parameters.AddWithValue("@NumeroComprobante", request.NumeroComprobante);
+                    command.Parameters.AddWithValue("@Observacion", (object?)request.Observacion ?? DBNull.Value);
+
+                    SqlParameter detallesParameter = command.Parameters.AddWithValue("@Detalles", detallesTable);
+                    detallesParameter.SqlDbType = SqlDbType.Structured;
+                    detallesParameter.TypeName = "dbo.DetalleCompraTvp";
+
+                    using (SqlDataReader reader =
+                        await command.ExecuteReaderAsync())
                     {
-                        using (SqlCommand command =
-                            new SqlCommand(
-                                "sp_Compra_Crear",
-                                con,
-                                transaction
-                            ))
+                        if (await reader.ReadAsync())
                         {
-                            command.CommandType = CommandType.StoredProcedure;
-                            command.Parameters.AddWithValue("@IdProveedor", request.IdProveedor);
-                            command.Parameters.AddWithValue("@IdUsuario", request.IdUsuario);
-                            command.Parameters.AddWithValue("@IdTipoComprobante", request.IdTipoComprobante);
-                            command.Parameters.AddWithValue("@NumeroComprobante", request.NumeroComprobante);
-                            command.Parameters.AddWithValue("@Observacion", (object?)request.Observacion ?? DBNull.Value);
-
-                            SqlParameter detallesParameter = command.Parameters.AddWithValue("@Detalles", detallesTable);
-                            detallesParameter.SqlDbType = SqlDbType.Structured;
-                            detallesParameter.TypeName = "dbo.DetalleCompraTvp";
-
-                            using (SqlDataReader reader =
-                                await command.ExecuteReaderAsync())
-                            {
-                                if (await reader.ReadAsync())
-                                {
-                                    idCompra = reader.GetInt64(0);
-                                }
-                            }
+                            idCompra = reader.GetInt64(0);
                         }
-
-                        if (!idCompra.HasValue)
-                        {
-                            await transaction.RollbackAsync();
-                            return null;
-                        }
-
-                        await transaction.CommitAsync();
-                    }
-                    catch
-                    {
-                        await transaction.RollbackAsync();
-                        throw;
                     }
                 }
             }
@@ -411,6 +432,25 @@ namespace GESTION_INVENTARIO_LICORES.Services
             }
         }
 
+        private async Task<bool> ExisteAlmacenActivoAsync(
+            SqlConnection con,
+            long idAlmacen
+        )
+        {
+            using (SqlCommand command =
+                new SqlCommand("sp_Almacen_ExistePorIdActivo", con))
+            {
+                command.CommandType = CommandType.StoredProcedure;
+                command.Parameters.AddWithValue("@IdAlmacen", idAlmacen);
+
+                object? resultado = await command.ExecuteScalarAsync();
+
+                return resultado is not null &&
+                    resultado != DBNull.Value &&
+                    Convert.ToBoolean(resultado);
+            }
+        }
+
         private async Task<bool> ExisteComprobanteAsync(
             SqlConnection con,
             long idProveedor,
@@ -459,20 +499,110 @@ namespace GESTION_INVENTARIO_LICORES.Services
             }
         }
 
+        private async Task<string?> ObtenerEstadoCompraAsync(
+            SqlConnection con,
+            long idCompra
+        )
+        {
+            using (SqlCommand command =
+                new SqlCommand("sp_Compra_ObtenerDetalle", con))
+            {
+                command.CommandType = CommandType.StoredProcedure;
+                command.Parameters.AddWithValue("@IdCompra", idCompra);
+
+                using (SqlDataReader reader =
+                    await command.ExecuteReaderAsync())
+                {
+                    if (await reader.ReadAsync())
+                    {
+                        return reader.GetString(reader.GetOrdinal("Estado"));
+                    }
+                }
+            }
+
+            return null;
+        }
+
         public async Task<bool> ChangeStatusAsync(
             long idCompra,
-            EstadoCompraReqDto request
+            EstadoCompraReqDto request,
+            long idUsuarioMovimiento
         )
         {
             using (SqlConnection con = new SqlConnection(conexion))
             {
-                using (SqlCommand command = new SqlCommand("sp_Compra_CambiarEstado", con))
+                await con.OpenAsync();
+
+                string? estadoActual =
+                    await ObtenerEstadoCompraAsync(
+                        con,
+                        idCompra
+                    );
+
+                if (estadoActual is null)
+                {
+                    return false;
+                }
+
+                string nuevoEstado =
+                    request.Estado.ToUpperInvariant();
+
+                estadoActual = estadoActual.ToUpperInvariant();
+
+                if (nuevoEstado != "RECIBIDA" &&
+                    nuevoEstado != "CANCELADA")
+                {
+                    throw new BusinessValidationException(
+                        "El nuevo estado solamente puede ser RECIBIDA o CANCELADA."
+                    );
+                }
+
+                if (estadoActual == nuevoEstado)
+                {
+                    throw new ConflictException(
+                        "La compra ya se encuentra en el estado solicitado."
+                    );
+                }
+
+                if (estadoActual != "PENDIENTE")
+                {
+                    throw new ConflictException(
+                        "La compra ya se encuentra en un estado final y no puede modificarse."
+                    );
+                }
+
+                if (nuevoEstado == "RECIBIDA" &&
+                    idUsuarioMovimiento <= 0)
+                {
+                    throw new BusinessValidationException(
+                        "No se pudo identificar al usuario que recibe la compra."
+                    );
+                }
+
+                string storedProcedure = nuevoEstado == "RECIBIDA"
+                    ? "sp_Compra_Recibir"
+                    : "sp_Compra_CambiarEstado";
+
+                using (SqlCommand command =
+                    new SqlCommand(
+                        storedProcedure,
+                        con
+                    ))
                 {
                     command.CommandType = CommandType.StoredProcedure;
                     command.Parameters.AddWithValue("@IdCompra", idCompra);
-                    command.Parameters.AddWithValue("@NuevoEstado", request.Estado);
 
-                    await con.OpenAsync();
+                    if (nuevoEstado == "CANCELADA")
+                    {
+                        command.Parameters.AddWithValue("@NuevoEstado", nuevoEstado);
+                    }
+                    else
+                    {
+                        command.Parameters.AddWithValue(
+                            "@IdUsuarioMovimiento",
+                            idUsuarioMovimiento
+                        );
+                    }
 
                     await command.ExecuteNonQueryAsync();
 

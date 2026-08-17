@@ -9,6 +9,7 @@ public interface ICompraService
         int pageNumber = 1,
         string? estado = null,
         long? idTipoComprobante = null,
+        long? idAlmacen = null,
         DateTime? fecha = null,
         string? razonSocial = null,
         string? numeroComprobante = null,
@@ -25,6 +26,7 @@ public interface ICompraService
 
     Task<bool> ChangeStatusAsync(
         long idCompra,
-        EstadoCompraReqDto request
+        EstadoCompraReqDto request,
+        long idUsuarioMovimiento
     );
 }

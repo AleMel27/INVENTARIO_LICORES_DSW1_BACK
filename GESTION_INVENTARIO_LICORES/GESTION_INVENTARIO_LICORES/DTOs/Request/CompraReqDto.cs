@@ -26,6 +26,13 @@ namespace GESTION_INVENTARIO_LICORES.DTOs.Request
         )]
         public long IdTipoComprobante { get; set; }
 
+        [Range(
+            1,
+            long.MaxValue,
+            ErrorMessage = "Debe seleccionar un almacén válido."
+        )]
+        public long IdAlmacen { get; set; }
+
         [Required(ErrorMessage = "El número de comprobante es obligatorio.")]
         [StringLength(
             50,

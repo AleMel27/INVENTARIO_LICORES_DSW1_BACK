@@ -13,7 +13,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("GESTION_INVENTARIO_LICORES")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+94c67a86687a58ca8842da824435890148187929")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+20a62b7b55c06f7ef6d4c423c46ff93b27a8e322")]
 [assembly: System.Reflection.AssemblyProductAttribute("GESTION_INVENTARIO_LICORES")]
 [assembly: System.Reflection.AssemblyTitleAttribute("GESTION_INVENTARIO_LICORES")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]

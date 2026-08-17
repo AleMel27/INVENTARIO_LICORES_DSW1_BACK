@@ -165,7 +165,8 @@ namespace GESTION_INVENTARIO_LICORES.Services
 
         private async Task<bool> ExisteNombreAsync(
             SqlConnection con,
-            string nombre
+            string nombre,
+            long? idMarca = null
         )
         {
             using (SqlCommand command =
@@ -173,6 +174,14 @@ namespace GESTION_INVENTARIO_LICORES.Services
             {
                 command.CommandType = CommandType.StoredProcedure;
                 command.Parameters.AddWithValue("@Nombre", nombre);
+
+                if (idMarca.HasValue)
+                {
+                    command.Parameters.AddWithValue(
+                        "@IdMarca",
+                        idMarca.Value
+                    );
+                }
 
                 object? resultado = await command.ExecuteScalarAsync();
 
@@ -182,6 +191,36 @@ namespace GESTION_INVENTARIO_LICORES.Services
             }
         }
 
+        private async Task<MarcaRespDto?> ObtenerPorIdAsync(
+            SqlConnection con,
+            long idMarca
+        )
+        {
+            using (SqlCommand command =
+                new SqlCommand("sp_Marca_ObtenerPorId", con))
+            {
+                command.CommandType = CommandType.StoredProcedure;
+                command.Parameters.AddWithValue("@IdMarca", idMarca);
+
+                using (SqlDataReader reader =
+                    await command.ExecuteReaderAsync())
+                {
+                    if (await reader.ReadAsync())
+                    {
+                        return new MarcaRespDto
+                        {
+                            IdMarca = reader.GetInt64(0),
+                            Nombre = reader.GetString(1),
+                            PaisOrigen = reader.IsDBNull(2) ? null : reader.GetString(2),
+                            Estado = reader.GetBoolean(3)
+                        };
+                    }
+                }
+            }
+
+            return null;
+        }
+
         public async Task<MarcaRespDto?> UpdateAsync(
             long idMarca,
             MarcaUpdateReqDto request
@@ -189,6 +228,30 @@ namespace GESTION_INVENTARIO_LICORES.Services
         {
             using (SqlConnection con = new SqlConnection(conexion))
             {
+                await con.OpenAsync();
+
+                MarcaRespDto? marcaActual =
+                    await ObtenerPorIdAsync(
+                        con,
+                        idMarca
+                    );
+
+                if (marcaActual is null)
+                {
+                    return null;
+                }
+
+                if (await ExisteNombreAsync(
+                    con,
+                    request.Nombre,
+                    idMarca
+                ))
+                {
+                    throw new ConflictException(
+                        "Ya existe una marca con ese nombre."
+                    );
+                }
+
                 using (SqlCommand command = new SqlCommand("sp_Marca_Actualizar", con))
                 {
                     command.CommandType = CommandType.StoredProcedure;
@@ -196,13 +259,11 @@ namespace GESTION_INVENTARIO_LICORES.Services
                     command.Parameters.AddWithValue("@Nombre", request.Nombre);
                     command.Parameters.AddWithValue("@PaisOrigen", (object?)request.PaisOrigen ?? DBNull.Value);
 
-                    await con.OpenAsync();
-
                     await command.ExecuteNonQueryAsync();
-
-                    return await GetByIdAsync(idMarca);
                 }
             }
+
+            return await GetByIdAsync(idMarca);
         }
 
         public async Task<bool> ChangeStatusAsync(
@@ -212,13 +273,33 @@ namespace GESTION_INVENTARIO_LICORES.Services
         {
             using (SqlConnection con = new SqlConnection(conexion))
             {
+                await con.OpenAsync();
+
+                MarcaRespDto? marcaActual =
+                    await ObtenerPorIdAsync(
+                        con,
+                        idMarca
+                    );
+
+                if (marcaActual is null)
+                {
+                    return false;
+                }
+
+                if (marcaActual.Estado == estado)
+                {
+                    throw new ConflictException(
+                        estado
+                            ? "La marca ya se encuentra activa."
+                            : "La marca ya se encuentra inactiva."
+                    );
+                }
+
                 using (SqlCommand command = new SqlCommand("sp_Marca_CambiarEstado", con))
                 {
                     command.CommandType = CommandType.StoredProcedure;
                     command.Parameters.AddWithValue("@IdMarca", idMarca);
                     command.Parameters.AddWithValue("@Estado", estado);
-
-                    await con.OpenAsync();
 
                     await command.ExecuteNonQueryAsync();
 

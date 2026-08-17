@@ -281,6 +281,54 @@ namespace GESTION_INVENTARIO_LICORES.Services
             }
         }
 
+        private async Task<ProductoRespDto?> ObtenerPorIdAsync(
+            SqlConnection con,
+            long idProducto
+        )
+        {
+            using (SqlCommand command =
+                new SqlCommand("sp_Producto_ObtenerPorId", con))
+            {
+                command.CommandType = CommandType.StoredProcedure;
+                command.Parameters.AddWithValue("@IdProducto", idProducto);
+
+                using (SqlDataReader reader =
+                    await command.ExecuteReaderAsync())
+                {
+                    if (await reader.ReadAsync())
+                    {
+                        return new ProductoRespDto
+                        {
+                            IdProducto = reader.GetInt64(0),
+                            Codigo = reader.GetString(1),
+                            Nombre = reader.GetString(2),
+                            Descripcion = reader.IsDBNull(3) ? null : reader.GetString(3),
+                            CapacidadMl = reader.GetInt32(4),
+                            GradoAlcoholico = reader.GetDecimal(5),
+                            PrecioVenta = reader.GetDecimal(6),
+                            StockMinimo = reader.GetInt32(7),
+
+                            Categoria = new CategoriaResumenRespDto
+                            {
+                                IdCategoria = reader.GetInt64(8),
+                                Nombre = reader.GetString(9)
+                            },
+
+                            Marca = new MarcaResumenRespDto
+                            {
+                                IdMarca = reader.GetInt64(10),
+                                Nombre = reader.GetString(11)
+                            },
+
+                            Estado = reader.GetBoolean(12)
+                        };
+                    }
+                }
+            }
+
+            return null;
+        }
+
         public async Task<ProductoRespDto?> UpdateAsync(
             long idProducto,
             ProductoUpdateReqDto request
@@ -288,6 +336,33 @@ namespace GESTION_INVENTARIO_LICORES.Services
         {
             using (SqlConnection con = new SqlConnection(conexion))
             {
+                await con.OpenAsync();
+
+                ProductoRespDto? productoActual =
+                    await ObtenerPorIdAsync(
+                        con,
+                        idProducto
+                    );
+
+                if (productoActual is null)
+                {
+                    return null;
+                }
+
+                if (!await ExisteCategoriaActivaAsync(con, request.IdCategoria))
+                {
+                    throw new BusinessValidationException(
+                        "La categoría indicada no es válida o se encuentra inactiva."
+                    );
+                }
+
+                if (!await ExisteMarcaActivaAsync(con, request.IdMarca))
+                {
+                    throw new BusinessValidationException(
+                        "La marca indicada no es válida o se encuentra inactiva."
+                    );
+                }
+
                 using (SqlCommand command = new SqlCommand("sp_Producto_Actualizar", con))
                 {
                     command.CommandType = CommandType.StoredProcedure;
@@ -301,13 +376,11 @@ namespace GESTION_INVENTARIO_LICORES.Services
                     command.Parameters.AddWithValue("@PrecioVenta", request.PrecioVenta);
                     command.Parameters.AddWithValue("@StockMinimo", request.StockMinimo);
 
-                    await con.OpenAsync();
-
                     await command.ExecuteNonQueryAsync();
-
-                    return await GetByIdAsync(idProducto);
                 }
             }
+
+            return await GetByIdAsync(idProducto);
         }
 
         public async Task<bool> ChangeStatusAsync(
@@ -317,13 +390,33 @@ namespace GESTION_INVENTARIO_LICORES.Services
         {
             using (SqlConnection con = new SqlConnection(conexion))
             {
+                await con.OpenAsync();
+
+                ProductoRespDto? productoActual =
+                    await ObtenerPorIdAsync(
+                        con,
+                        idProducto
+                    );
+
+                if (productoActual is null)
+                {
+                    return false;
+                }
+
+                if (productoActual.Estado == estado)
+                {
+                    throw new ConflictException(
+                        estado
+                            ? "El producto ya se encuentra activo."
+                            : "El producto ya se encuentra inactivo."
+                    );
+                }
+
                 using (SqlCommand command = new SqlCommand("sp_Producto_CambiarEstado", con))
                 {
                     command.CommandType = CommandType.StoredProcedure;
                     command.Parameters.AddWithValue("@IdProducto", idProducto);
                     command.Parameters.AddWithValue("@Estado", estado);
-
-                    await con.OpenAsync();
 
                     await command.ExecuteNonQueryAsync();
 

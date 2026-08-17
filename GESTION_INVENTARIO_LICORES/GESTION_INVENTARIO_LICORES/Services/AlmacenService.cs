@@ -168,7 +168,8 @@ namespace GESTION_INVENTARIO_LICORES.Services
 
         private async Task<bool> ExisteNombreAsync(
             SqlConnection con,
-            string nombre
+            string nombre,
+            long? idAlmacen = null
         )
         {
             using (SqlCommand command =
@@ -176,6 +177,14 @@ namespace GESTION_INVENTARIO_LICORES.Services
             {
                 command.CommandType = CommandType.StoredProcedure;
                 command.Parameters.AddWithValue("@Nombre", nombre);
+
+                if (idAlmacen.HasValue)
+                {
+                    command.Parameters.AddWithValue(
+                        "@IdAlmacen",
+                        idAlmacen.Value
+                    );
+                }
 
                 object? resultado = await command.ExecuteScalarAsync();
 
@@ -185,6 +194,37 @@ namespace GESTION_INVENTARIO_LICORES.Services
             }
         }
 
+        private async Task<AlmacenRespDto?> ObtenerPorIdAsync(
+            SqlConnection con,
+            long idAlmacen
+        )
+        {
+            using (SqlCommand command =
+                new SqlCommand("sp_Almacen_ObtenerPorId", con))
+            {
+                command.CommandType = CommandType.StoredProcedure;
+                command.Parameters.AddWithValue("@IdAlmacen", idAlmacen);
+
+                using (SqlDataReader reader =
+                    await command.ExecuteReaderAsync())
+                {
+                    if (await reader.ReadAsync())
+                    {
+                        return new AlmacenRespDto
+                        {
+                            IdAlmacen = reader.GetInt64(0),
+                            Nombre = reader.GetString(1),
+                            Ubicacion = reader.GetString(2),
+                            Descripcion = reader.IsDBNull(3) ? null : reader.GetString(3),
+                            Estado = reader.GetBoolean(4)
+                        };
+                    }
+                }
+            }
+
+            return null;
+        }
+
         public async Task<AlmacenRespDto?> UpdateAsync(
             long idAlmacen,
             AlmacenUpdateReqDto request
@@ -192,6 +232,30 @@ namespace GESTION_INVENTARIO_LICORES.Services
         {
             using (SqlConnection con = new SqlConnection(conexion))
             {
+                await con.OpenAsync();
+
+                AlmacenRespDto? almacenActual =
+                    await ObtenerPorIdAsync(
+                        con,
+                        idAlmacen
+                    );
+
+                if (almacenActual is null)
+                {
+                    return null;
+                }
+
+                if (await ExisteNombreAsync(
+                    con,
+                    request.Nombre,
+                    idAlmacen
+                ))
+                {
+                    throw new ConflictException(
+                        "Ya existe un almacén con ese nombre."
+                    );
+                }
+
                 using (SqlCommand command =
                     new SqlCommand("sp_Almacen_Actualizar", con))
                 {
@@ -212,8 +276,6 @@ namespace GESTION_INVENTARIO_LICORES.Services
                         (object?)request.Descripcion ?? DBNull.Value
                     );
 
-                    await con.OpenAsync();
-
                     await command.ExecuteNonQueryAsync();
                 }
             }
@@ -228,6 +290,28 @@ namespace GESTION_INVENTARIO_LICORES.Services
         {
             using (SqlConnection con = new SqlConnection(conexion))
             {
+                await con.OpenAsync();
+
+                AlmacenRespDto? almacenActual =
+                    await ObtenerPorIdAsync(
+                        con,
+                        idAlmacen
+                    );
+
+                if (almacenActual is null)
+                {
+                    return false;
+                }
+
+                if (almacenActual.Estado == estado)
+                {
+                    throw new ConflictException(
+                        estado
+                            ? "El almacén ya se encuentra activo."
+                            : "El almacén ya se encuentra inactivo."
+                    );
+                }
+
                 using (SqlCommand command =
                     new SqlCommand("sp_Almacen_CambiarEstado", con))
                 {
@@ -242,8 +326,6 @@ namespace GESTION_INVENTARIO_LICORES.Services
                         "@Estado",
                         estado
                     );
-
-                    await con.OpenAsync();
 
                     await command.ExecuteNonQueryAsync();
 

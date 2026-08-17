@@ -327,6 +327,17 @@ namespace GESTION_INVENTARIO_LICORES.Controllers
                     }
                 );
             }
+            catch (ConflictException ex)
+            {
+                return Conflict(
+                    new ProblemDetails
+                    {
+                        Status = StatusCodes.Status409Conflict,
+                        Title = "Conflicto",
+                        Detail = ex.Message
+                    }
+                );
+            }
             catch (SqlException)
             {
                 return StatusCode(

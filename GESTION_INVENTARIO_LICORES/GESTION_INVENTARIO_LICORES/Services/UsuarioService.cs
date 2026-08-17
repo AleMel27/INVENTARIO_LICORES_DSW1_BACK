@@ -198,7 +198,8 @@ namespace GESTION_INVENTARIO_LICORES.Services
 
         private async Task<bool> ExisteCorreoAsync(
             SqlConnection con,
-            string correo
+            string correo,
+            long? idUsuario = null
         )
         {
             using (SqlCommand command =
@@ -206,6 +207,14 @@ namespace GESTION_INVENTARIO_LICORES.Services
             {
                 command.CommandType = CommandType.StoredProcedure;
                 command.Parameters.AddWithValue("@Correo", correo);
+
+                if (idUsuario.HasValue)
+                {
+                    command.Parameters.AddWithValue(
+                        "@IdUsuario",
+                        idUsuario.Value
+                    );
+                }
 
                 object? resultado = await command.ExecuteScalarAsync();
 
@@ -234,6 +243,44 @@ namespace GESTION_INVENTARIO_LICORES.Services
             }
         }
 
+        private async Task<UsuarioRespDto?> ObtenerPorIdAsync(
+            SqlConnection con,
+            long idUsuario
+        )
+        {
+            using (SqlCommand command =
+                new SqlCommand("sp_Usuario_ObtenerPorId", con))
+            {
+                command.CommandType = CommandType.StoredProcedure;
+                command.Parameters.AddWithValue("@IdUsuario", idUsuario);
+
+                using (SqlDataReader reader =
+                    await command.ExecuteReaderAsync())
+                {
+                    if (await reader.ReadAsync())
+                    {
+                        return new UsuarioRespDto
+                        {
+                            IdUsuario = reader.GetInt64(0),
+                            Nombres = reader.GetString(1),
+                            Apellidos = reader.GetString(2),
+                            Correo = reader.GetString(3),
+
+                            Rol = new RolRespDto
+                            {
+                                IdRol = reader.GetInt64(4),
+                                Nombre = reader.GetString(5)
+                            },
+
+                            Estado = reader.GetBoolean(6)
+                        };
+                    }
+                }
+            }
+
+            return null;
+        }
+
         public async Task<UsuarioRespDto?> UpdateAsync(
             long idUsuario,
             UsuarioUpdateReqDto request
@@ -241,6 +288,37 @@ namespace GESTION_INVENTARIO_LICORES.Services
         {
             using (SqlConnection con = new SqlConnection(conexion))
             {
+                await con.OpenAsync();
+
+                UsuarioRespDto? usuarioActual =
+                    await ObtenerPorIdAsync(
+                        con,
+                        idUsuario
+                    );
+
+                if (usuarioActual is null)
+                {
+                    return null;
+                }
+
+                if (await ExisteCorreoAsync(
+                    con,
+                    request.Correo,
+                    idUsuario
+                ))
+                {
+                    throw new ConflictException(
+                        "Ya existe un usuario registrado con ese correo."
+                    );
+                }
+
+                if (!await ExisteRolActivoAsync(con, request.IdRol))
+                {
+                    throw new BusinessValidationException(
+                        "El rol indicado no es válido o se encuentra inactivo."
+                    );
+                }
+
                 using (SqlCommand command =
                     new SqlCommand("sp_Usuario_Actualizar", con))
                 {
@@ -271,8 +349,6 @@ namespace GESTION_INVENTARIO_LICORES.Services
                         request.IdRol
                     );
 
-                    await con.OpenAsync();
-
                     await command.ExecuteNonQueryAsync();
                 }
             }
@@ -287,6 +363,28 @@ namespace GESTION_INVENTARIO_LICORES.Services
         {
             using (SqlConnection con = new SqlConnection(conexion))
             {
+                await con.OpenAsync();
+
+                UsuarioRespDto? usuarioActual =
+                    await ObtenerPorIdAsync(
+                        con,
+                        idUsuario
+                    );
+
+                if (usuarioActual is null)
+                {
+                    return false;
+                }
+
+                if (usuarioActual.Estado == estado)
+                {
+                    throw new ConflictException(
+                        estado
+                            ? "El usuario ya se encuentra activo."
+                            : "El usuario ya se encuentra inactivo."
+                    );
+                }
+
                 using (SqlCommand command =
                     new SqlCommand("sp_Usuario_CambiarEstado", con))
                 {
@@ -301,8 +399,6 @@ namespace GESTION_INVENTARIO_LICORES.Services
                         "@Estado",
                         estado
                     );
-
-                    await con.OpenAsync();
 
                     await command.ExecuteNonQueryAsync();
 

@@ -163,7 +163,8 @@ namespace GESTION_INVENTARIO_LICORES.Services
 
         private async Task<bool> ExisteNombreAsync(
             SqlConnection con,
-            string nombre
+            string nombre,
+            long? idCategoria = null
         )
         {
             using (SqlCommand command =
@@ -171,6 +172,14 @@ namespace GESTION_INVENTARIO_LICORES.Services
             {
                 command.CommandType = CommandType.StoredProcedure;
                 command.Parameters.AddWithValue("@Nombre", nombre);
+
+                if (idCategoria.HasValue)
+                {
+                    command.Parameters.AddWithValue(
+                        "@IdCategoria",
+                        idCategoria.Value
+                    );
+                }
 
                 object? resultado = await command.ExecuteScalarAsync();
 
@@ -180,6 +189,36 @@ namespace GESTION_INVENTARIO_LICORES.Services
             }
         }
 
+        private async Task<CategoriaRespDto?> ObtenerPorIdAsync(
+            SqlConnection con,
+            long idCategoria
+        )
+        {
+            using (SqlCommand command =
+                new SqlCommand("sp_Categoria_ObtenerPorId", con))
+            {
+                command.CommandType = CommandType.StoredProcedure;
+                command.Parameters.AddWithValue("@IdCategoria", idCategoria);
+
+                using (SqlDataReader reader =
+                    await command.ExecuteReaderAsync())
+                {
+                    if (await reader.ReadAsync())
+                    {
+                        return new CategoriaRespDto
+                        {
+                            IdCategoria = reader.GetInt64(0),
+                            Nombre = reader.GetString(1),
+                            Descripcion = reader.IsDBNull(2) ? null : reader.GetString(2),
+                            Estado = reader.GetBoolean(3)
+                        };
+                    }
+                }
+            }
+
+            return null;
+        }
+
         public async Task<CategoriaRespDto?> UpdateAsync(
             long idCategoria,
             CategoriaUpdateReqDto request
@@ -187,6 +226,30 @@ namespace GESTION_INVENTARIO_LICORES.Services
         {
             using (SqlConnection con = new SqlConnection(conexion))
             {
+                await con.OpenAsync();
+
+                CategoriaRespDto? categoriaActual =
+                    await ObtenerPorIdAsync(
+                        con,
+                        idCategoria
+                    );
+
+                if (categoriaActual is null)
+                {
+                    return null;
+                }
+
+                if (await ExisteNombreAsync(
+                    con,
+                    request.Nombre,
+                    idCategoria
+                ))
+                {
+                    throw new ConflictException(
+                        "Ya existe una categoría con ese nombre."
+                    );
+                }
+
                 using (SqlCommand command =
                     new SqlCommand("sp_Categoria_Actualizar", con))
                 {
@@ -207,8 +270,6 @@ namespace GESTION_INVENTARIO_LICORES.Services
                         (object?)request.Descripcion ?? DBNull.Value
                     );
 
-                    await con.OpenAsync();
-
                     await command.ExecuteNonQueryAsync();
                 }
             }
@@ -223,6 +284,28 @@ namespace GESTION_INVENTARIO_LICORES.Services
         {
             using (SqlConnection con = new SqlConnection(conexion))
             {
+                await con.OpenAsync();
+
+                CategoriaRespDto? categoriaActual =
+                    await ObtenerPorIdAsync(
+                        con,
+                        idCategoria
+                    );
+
+                if (categoriaActual is null)
+                {
+                    return false;
+                }
+
+                if (categoriaActual.Estado == estado)
+                {
+                    throw new ConflictException(
+                        estado
+                            ? "La categoría ya se encuentra activa."
+                            : "La categoría ya se encuentra inactiva."
+                    );
+                }
+
                 using (SqlCommand command =
                     new SqlCommand("sp_Categoria_CambiarEstado", con))
                 {
@@ -237,8 +320,6 @@ namespace GESTION_INVENTARIO_LICORES.Services
                         "@Estado",
                         estado
                     );
-
-                    await con.OpenAsync();
 
                     await command.ExecuteNonQueryAsync();
 

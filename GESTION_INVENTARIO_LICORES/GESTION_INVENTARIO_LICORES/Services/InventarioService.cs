@@ -266,6 +266,63 @@ namespace GESTION_INVENTARIO_LICORES.Services
             }
         }
 
+        private async Task<bool> ExisteInventarioAsync(
+            SqlConnection con,
+            long idInventario
+        )
+        {
+            using (SqlCommand command =
+                new SqlCommand("sp_Inventario_ExistePorId", con))
+            {
+                command.CommandType = CommandType.StoredProcedure;
+                command.Parameters.AddWithValue("@IdInventario", idInventario);
+
+                object? resultado = await command.ExecuteScalarAsync();
+
+                return resultado is not null &&
+                    resultado != DBNull.Value &&
+                    Convert.ToBoolean(resultado);
+            }
+        }
+
+        private async Task<bool> ExisteUsuarioActivoAsync(
+            SqlConnection con,
+            long idUsuario
+        )
+        {
+            using (SqlCommand command =
+                new SqlCommand("sp_Usuario_ExistePorIdActivo", con))
+            {
+                command.CommandType = CommandType.StoredProcedure;
+                command.Parameters.AddWithValue("@IdUsuario", idUsuario);
+
+                object? resultado = await command.ExecuteScalarAsync();
+
+                return resultado is not null &&
+                    resultado != DBNull.Value &&
+                    Convert.ToBoolean(resultado);
+            }
+        }
+
+        private async Task<bool> ExisteTipoMovimientoActivoAsync(
+            SqlConnection con,
+            long idTipoMovimiento
+        )
+        {
+            using (SqlCommand command =
+                new SqlCommand("sp_TipoMovimiento_ExistePorIdActivo", con))
+            {
+                command.CommandType = CommandType.StoredProcedure;
+                command.Parameters.AddWithValue("@IdTipoMovimiento", idTipoMovimiento);
+
+                object? resultado = await command.ExecuteScalarAsync();
+
+                return resultado is not null &&
+                    resultado != DBNull.Value &&
+                    Convert.ToBoolean(resultado);
+            }
+        }
+
         public async Task<bool> AdjustStockAsync(
             long idInventario,
             AjusteInventarioReqDto request
@@ -273,22 +330,73 @@ namespace GESTION_INVENTARIO_LICORES.Services
         {
             using (SqlConnection con = new SqlConnection(conexion))
             {
-                using (SqlCommand command = new SqlCommand("sp_Inventario_AjustarStock", con))
+                await con.OpenAsync();
+
+                if (!await ExisteInventarioAsync(con, idInventario))
                 {
-                    command.CommandType = CommandType.StoredProcedure;
-                    command.Parameters.AddWithValue("@IdInventario", idInventario);
-                    command.Parameters.AddWithValue("@IdUsuario", request.IdUsuario);
-                    command.Parameters.AddWithValue("@IdTipoMovimiento", request.IdTipoMovimiento);
-                    command.Parameters.AddWithValue("@Cantidad", request.Cantidad);
-                    command.Parameters.AddWithValue("@Motivo", request.Motivo);
-                    command.Parameters.AddWithValue("@Referencia", (object?)request.Referencia ?? DBNull.Value);
+                    return false;
+                }
 
-                    await con.OpenAsync();
+                if (!await ExisteUsuarioActivoAsync(con, request.IdUsuario))
+                {
+                    throw new BusinessValidationException(
+                        "El usuario indicado no es válido o se encuentra inactivo."
+                    );
+                }
 
-                    using (SqlDataReader reader =
-                        await command.ExecuteReaderAsync())
+                if (!await ExisteTipoMovimientoActivoAsync(
+                    con,
+                    request.IdTipoMovimiento
+                ))
+                {
+                    throw new BusinessValidationException(
+                        "El tipo de movimiento indicado no es válido o se encuentra inactivo."
+                    );
+                }
+
+                using (SqlTransaction transaction =
+                    (SqlTransaction)await con.BeginTransactionAsync())
+                {
+                    try
                     {
-                        return await reader.ReadAsync();
+                        bool ajustado;
+
+                        using (SqlCommand command =
+                            new SqlCommand(
+                                "sp_Inventario_AjustarStock",
+                                con,
+                                transaction
+                            ))
+                        {
+                            command.CommandType = CommandType.StoredProcedure;
+                            command.Parameters.AddWithValue("@IdInventario", idInventario);
+                            command.Parameters.AddWithValue("@IdUsuario", request.IdUsuario);
+                            command.Parameters.AddWithValue("@IdTipoMovimiento", request.IdTipoMovimiento);
+                            command.Parameters.AddWithValue("@Cantidad", request.Cantidad);
+                            command.Parameters.AddWithValue("@Motivo", request.Motivo);
+                            command.Parameters.AddWithValue("@Referencia", (object?)request.Referencia ?? DBNull.Value);
+
+                            using (SqlDataReader reader =
+                                await command.ExecuteReaderAsync())
+                            {
+                                ajustado = await reader.ReadAsync();
+                            }
+                        }
+
+                        if (!ajustado)
+                        {
+                            await transaction.RollbackAsync();
+                            return false;
+                        }
+
+                        await transaction.CommitAsync();
+
+                        return true;
+                    }
+                    catch
+                    {
+                        await transaction.RollbackAsync();
+                        throw;
                     }
                 }
             }

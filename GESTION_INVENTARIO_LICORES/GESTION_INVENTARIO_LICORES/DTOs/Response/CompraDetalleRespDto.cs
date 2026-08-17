@@ -13,6 +13,8 @@ namespace GESTION_INVENTARIO_LICORES.DTOs.Response
 
         public TipoComprobanteRespDto TipoComprobante { get; set; } = new();
 
+        public AlmacenInventarioRespDto Almacen { get; set; } = new();
+
         public DateTime FechaCompra { get; set; }
 
         public string NumeroComprobante { get; set; } = string.Empty;

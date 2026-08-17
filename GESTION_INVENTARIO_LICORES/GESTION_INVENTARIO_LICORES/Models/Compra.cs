@@ -6,6 +6,7 @@
         public long IdProveedor { get; set; }
         public long IdUsuario { get; set; }
         public long IdTipoComprobante { get; set; }
+        public long IdAlmacen { get; set; }
 
         public DateTime FechaCompra { get; set; }
 

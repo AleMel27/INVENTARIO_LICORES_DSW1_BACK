@@ -178,7 +178,8 @@ namespace GESTION_INVENTARIO_LICORES.Services
 
         private async Task<bool> ExisteRucAsync(
             SqlConnection con,
-            string ruc
+            string ruc,
+            long? idProveedor = null
         )
         {
             using (SqlCommand command =
@@ -186,6 +187,14 @@ namespace GESTION_INVENTARIO_LICORES.Services
             {
                 command.CommandType = CommandType.StoredProcedure;
                 command.Parameters.AddWithValue("@Ruc", ruc);
+
+                if (idProveedor.HasValue)
+                {
+                    command.Parameters.AddWithValue(
+                        "@IdProveedor",
+                        idProveedor.Value
+                    );
+                }
 
                 object? resultado = await command.ExecuteScalarAsync();
 
@@ -197,7 +206,8 @@ namespace GESTION_INVENTARIO_LICORES.Services
 
         private async Task<bool> ExisteCorreoAsync(
             SqlConnection con,
-            string correo
+            string correo,
+            long? idProveedor = null
         )
         {
             using (SqlCommand command =
@@ -205,6 +215,14 @@ namespace GESTION_INVENTARIO_LICORES.Services
             {
                 command.CommandType = CommandType.StoredProcedure;
                 command.Parameters.AddWithValue("@Correo", correo);
+
+                if (idProveedor.HasValue)
+                {
+                    command.Parameters.AddWithValue(
+                        "@IdProveedor",
+                        idProveedor.Value
+                    );
+                }
 
                 object? resultado = await command.ExecuteScalarAsync();
 
@@ -214,6 +232,39 @@ namespace GESTION_INVENTARIO_LICORES.Services
             }
         }
 
+        private async Task<ProveedorRespDto?> ObtenerPorIdAsync(
+            SqlConnection con,
+            long idProveedor
+        )
+        {
+            using (SqlCommand command =
+                new SqlCommand("sp_Proveedor_ObtenerPorId", con))
+            {
+                command.CommandType = CommandType.StoredProcedure;
+                command.Parameters.AddWithValue("@IdProveedor", idProveedor);
+
+                using (SqlDataReader reader =
+                    await command.ExecuteReaderAsync())
+                {
+                    if (await reader.ReadAsync())
+                    {
+                        return new ProveedorRespDto
+                        {
+                            IdProveedor = reader.GetInt64(0),
+                            Ruc = reader.GetString(1),
+                            RazonSocial = reader.GetString(2),
+                            Telefono = reader.IsDBNull(3) ? null : reader.GetString(3),
+                            Correo = reader.IsDBNull(4) ? null : reader.GetString(4),
+                            Direccion = reader.IsDBNull(5) ? null : reader.GetString(5),
+                            Estado = reader.GetBoolean(6)
+                        };
+                    }
+                }
+            }
+
+            return null;
+        }
+
         public async Task<ProveedorRespDto?> UpdateAsync(
             long idProveedor,
             ProveedorUpdateReqDto request
@@ -221,6 +272,42 @@ namespace GESTION_INVENTARIO_LICORES.Services
         {
             using (SqlConnection con = new SqlConnection(conexion))
             {
+                await con.OpenAsync();
+
+                ProveedorRespDto? proveedorActual =
+                    await ObtenerPorIdAsync(
+                        con,
+                        idProveedor
+                    );
+
+                if (proveedorActual is null)
+                {
+                    return null;
+                }
+
+                if (await ExisteRucAsync(
+                    con,
+                    request.Ruc,
+                    idProveedor
+                ))
+                {
+                    throw new ConflictException(
+                        "Ya existe un proveedor con ese RUC."
+                    );
+                }
+
+                if (!string.IsNullOrWhiteSpace(request.Correo) &&
+                    await ExisteCorreoAsync(
+                        con,
+                        request.Correo,
+                        idProveedor
+                    ))
+                {
+                    throw new ConflictException(
+                        "Ya existe un proveedor con ese correo."
+                    );
+                }
+
                 using (SqlCommand command = new SqlCommand("sp_Proveedor_Actualizar", con))
                 {
                     command.CommandType = CommandType.StoredProcedure;
@@ -231,13 +318,11 @@ namespace GESTION_INVENTARIO_LICORES.Services
                     command.Parameters.AddWithValue("@Correo", (object?)request.Correo ?? DBNull.Value);
                     command.Parameters.AddWithValue("@Direccion", (object?)request.Direccion ?? DBNull.Value);
 
-                    await con.OpenAsync();
-
                     await command.ExecuteNonQueryAsync();
-
-                    return await GetByIdAsync(idProveedor);
                 }
             }
+
+            return await GetByIdAsync(idProveedor);
         }
 
         public async Task<bool> ChangeStatusAsync(
@@ -247,13 +332,33 @@ namespace GESTION_INVENTARIO_LICORES.Services
         {
             using (SqlConnection con = new SqlConnection(conexion))
             {
+                await con.OpenAsync();
+
+                ProveedorRespDto? proveedorActual =
+                    await ObtenerPorIdAsync(
+                        con,
+                        idProveedor
+                    );
+
+                if (proveedorActual is null)
+                {
+                    return false;
+                }
+
+                if (proveedorActual.Estado == estado)
+                {
+                    throw new ConflictException(
+                        estado
+                            ? "El proveedor ya se encuentra activo."
+                            : "El proveedor ya se encuentra inactivo."
+                    );
+                }
+
                 using (SqlCommand command = new SqlCommand("sp_Proveedor_CambiarEstado", con))
                 {
                     command.CommandType = CommandType.StoredProcedure;
                     command.Parameters.AddWithValue("@IdProveedor", idProveedor);
                     command.Parameters.AddWithValue("@Estado", estado);
-
-                    await con.OpenAsync();
 
                     await command.ExecuteNonQueryAsync();
 
