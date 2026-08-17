@@ -11,7 +11,7 @@ namespace GESTION_INVENTARIO_LICORES.Controllers
 {
     [Route("api/[controller]")]
     [ApiController]
-    //[Authorize(Roles = "ADMIN")]
+    [Authorize(Roles = "ADMIN")]
     public class UsuarioController : ControllerBase
     {
         private readonly IUsuarioService _service;
