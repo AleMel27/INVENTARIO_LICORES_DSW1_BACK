@@ -15,12 +15,15 @@ namespace GESTION_INVENTARIO_LICORES.Controllers
     public class UsuarioController : ControllerBase
     {
         private readonly IUsuarioService _service;
+        private readonly ILogger<UsuarioController> _logger;
 
         public UsuarioController(
-            IUsuarioService service
+            IUsuarioService service,
+            ILogger<UsuarioController> logger
         )
         {
             _service = service;
+            _logger = logger;
         }
 
         [HttpGet]
@@ -259,8 +262,16 @@ namespace GESTION_INVENTARIO_LICORES.Controllers
                     }
                 );
             }
-            catch (SqlException)
+            catch (SqlException ex)
             {
+                _logger.LogError(
+                    ex,
+                    "Error SQL al registrar usuario con correo {Correo} y rol {IdRol}. Número SQL: {Number}",
+                    request.Correo,
+                    request.IdRol,
+                    ex.Number
+                );
+
                 return StatusCode(
                     StatusCodes.Status500InternalServerError,
                     new ProblemDetails
@@ -271,8 +282,15 @@ namespace GESTION_INVENTARIO_LICORES.Controllers
                     }
                 );
             }
-            catch (Exception)
+            catch (Exception ex)
             {
+                _logger.LogError(
+                    ex,
+                    "Error inesperado al registrar usuario con correo {Correo} y rol {IdRol}.",
+                    request.Correo,
+                    request.IdRol
+                );
+
                 return StatusCode(
                     StatusCodes.Status500InternalServerError,
                     new ProblemDetails
