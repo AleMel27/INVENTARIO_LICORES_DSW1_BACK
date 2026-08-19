@@ -393,13 +393,15 @@ namespace GESTION_INVENTARIO_LICORES.Services
 
         private async Task<bool> ExisteUsuarioActivoAsync(
             SqlConnection con,
-            long idUsuario
+            long idUsuario,
+            SqlTransaction? transaction = null
         )
         {
             using (SqlCommand command =
                 new SqlCommand("sp_Usuario_ExistePorIdActivo", con))
             {
                 command.CommandType = CommandType.StoredProcedure;
+                command.Transaction = transaction;
                 command.Parameters.AddWithValue("@IdUsuario", idUsuario);
 
                 object? resultado = await command.ExecuteScalarAsync();
@@ -579,34 +581,96 @@ namespace GESTION_INVENTARIO_LICORES.Services
                     );
                 }
 
-                string storedProcedure = nuevoEstado == "RECIBIDA"
-                    ? "sp_Compra_Recibir"
-                    : "sp_Compra_CambiarEstado";
+                if (nuevoEstado == "RECIBIDA")
+                {
+                    return await RecibirCompraAsync(
+                        con,
+                        idCompra,
+                        idUsuarioMovimiento
+                    );
+                }
 
                 using (SqlCommand command =
                     new SqlCommand(
-                        storedProcedure,
+                        "sp_Compra_CambiarEstado",
                         con
                     ))
                 {
                     command.CommandType = CommandType.StoredProcedure;
                     command.Parameters.AddWithValue("@IdCompra", idCompra);
-
-                    if (nuevoEstado == "CANCELADA")
-                    {
-                        command.Parameters.AddWithValue("@NuevoEstado", nuevoEstado);
-                    }
-                    else
-                    {
-                        command.Parameters.AddWithValue(
-                            "@IdUsuarioMovimiento",
-                            idUsuarioMovimiento
-                        );
-                    }
+                    command.Parameters.AddWithValue("@NuevoEstado", nuevoEstado);
 
                     await command.ExecuteNonQueryAsync();
 
                     return true;
+                }
+            }
+        }
+
+        private async Task<bool> RecibirCompraAsync(
+            SqlConnection con,
+            long idCompra,
+            long idUsuarioMovimiento
+        )
+        {
+            using (SqlCommand command =
+                new SqlCommand("sp_Compra_Recibir", con))
+            {
+                command.CommandType = CommandType.StoredProcedure;
+
+                command.Parameters.AddWithValue(
+                    "@IdCompra",
+                    idCompra
+                );
+
+                command.Parameters.AddWithValue(
+                    "@IdUsuarioMovimiento",
+                    idUsuarioMovimiento
+                );
+
+                try
+                {
+                    using (SqlDataReader reader =
+                        await command.ExecuteReaderAsync())
+                    {
+                        if (!await reader.ReadAsync())
+                        {
+                            return false;
+                        }
+
+                        string estado =
+                            reader.GetString(
+                                reader.GetOrdinal("Estado")
+                            );
+
+                        return estado.Equals(
+                            "RECIBIDA",
+                            StringComparison.OrdinalIgnoreCase
+                        );
+                    }
+                }
+                catch (SqlException ex) when (ex.Number == 50030)
+                {
+                    // La compra no existe.
+                    return false;
+                }
+                catch (SqlException ex) when (
+                    ex.Number == 50031 ||
+                    ex.Number == 50038
+                )
+                {
+                    throw new ConflictException(ex.Message);
+                }
+                catch (SqlException ex) when (
+                    ex.Number == 50032 ||
+                    ex.Number == 50033 ||
+                    ex.Number == 50034 ||
+                    ex.Number == 50035 ||
+                    ex.Number == 50036 ||
+                    ex.Number == 50037
+                )
+                {
+                    throw new BusinessValidationException(ex.Message);
                 }
             }
         }
